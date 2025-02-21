@@ -127,9 +127,9 @@
                     await createChart(data.map(itm => {return {x:  moment(itm.Timestamp).valueOf(), y: itm.Unknown6Ints[i]}}), `Unknown 6 - Offset ${i} [1Hz]`, "Unknown");
             }
             
-            //await createChart(data.map(itm => {return {x:  moment(itm.Timestamp).valueOf(), y: itm.Reslex}}), "Reslex [1Hz]", "Reslex", 0);
+            await createChart(data.map(itm => {return {x:  moment(itm.Timestamp).valueOf(), y: itm.Reslex}}), "Reslex [1Hz]", "Reslex", 0);
 
-            //await createChart(data.map(itm => {return {x:  moment(itm.Timestamp).valueOf(), y: itm.Terminator}}), "Terminator [1Hz]", "Terminator", 0);
+            await createChart(data.map(itm => {return {x:  moment(itm.Timestamp).valueOf(), y: itm.Terminator}}), "Terminator [1Hz]", "Terminator", 0);
 
 
 
