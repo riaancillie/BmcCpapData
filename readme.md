@@ -7,7 +7,7 @@
 
 [Session 2025/02/19](https://riaancillie.github.io/BmcCpapData/?file=20250219)
 
-[Session 2025/02/16](https://riaancillie.github.io/BmcCpapData/?file=20250219)
+[Session 2025/02/16](https://riaancillie.github.io/BmcCpapData/?file=20250215)
 
 
 ## What is this repository?
@@ -54,7 +54,7 @@ All data is in binary format.
 
 * [The *.nnn* File (Waveforms)](02-nnnfile.md)
 
-* [The *.idx* File (Session machine settings and link to .nnn waveform file)](03-evtfile.md)
+* [The *.idx* File (Session machine settings and link to .nnn waveform file)](03-idxfile.md)
 
 * [Date encoding](0a-date-encoding.md)
 
@@ -68,7 +68,7 @@ All data is in binary format.
 
 * [Session 2025/02/19](https://riaancillie.github.io/BmcCpapData/?file=20250219)
 
-* [Session 2025/02/16](https://riaancillie.github.io/BmcCpapData/?file=20250219)
+* [Session 2025/02/16](https://riaancillie.github.io/BmcCpapData/?file=20250215)
 
 
 

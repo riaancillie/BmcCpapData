@@ -102,7 +102,7 @@
             await createChart(data.map(itm => {return {x:  moment(itm.Timestamp).valueOf(), y: itm.TidalVolume}}), "Tidal Volume [1Hz]", "ml", 0);
             await createChart(data.map(itm => {return {x:  moment(itm.Timestamp).valueOf(), y: itm.RespirationRate}}), "Respiration Rate [1Hz]", "Unknown", 0);
 
-            await createChart(data.map(itm => {return {x:  moment(itm.Timestamp).valueOf(), y: itm.RespirationRate * (itm.TidalVolume/1000)}}), "Minute Vent [1Hz]", "L/min", 0);
+            await createChart(data.map(itm => {return {x:  moment(itm.Timestamp).valueOf(), y: itm.RespirationRate * (itm.TidalVolume/1000)}}), "Minute Vent (Calculated as Tidal * Resp Rate / 1000) [1Hz]", "L/min", 0);
 
             await createChart(mapBundledData(data, "Unknown1"), "Unknown1 [25Hz]", "Unknown");
             await createChart(mapBundledData(data, "Unknown2"), "Unknown2 [25Hz]", "Unknown");
@@ -134,7 +134,7 @@
             
             //await createChart(data.map(itm => {return {x:  moment(itm.Timestamp).valueOf(), y: itm.Reslex}}), "Reslex [1Hz]", "Reslex", 0);
 
-            await createChart(data.map(itm => {return {x:  moment(itm.Timestamp).valueOf(), y: itm.Terminator}}), "Terminator [1Hz]", "Terminator", 0);
+            //await createChart(data.map(itm => {return {x:  moment(itm.Timestamp).valueOf(), y: itm.Terminator}}), "Terminator [1Hz]", "Terminator", 0);
 
 
 
