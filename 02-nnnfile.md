@@ -8,7 +8,7 @@ The structure of each packet is as follows:
 |Offset Hex|Length|Short Name|Description|
 |-----|---|--|---|
 |`0x0000`|`uint16`|Header|Header always equal to `0xAAAA` |
-|`0x0002`|`uint16`|Reslex|Reslex value |
+|`0x0002`|`uint16`|Session Number?|Possibly session number in `.IDX` file |
 |`0x0004`|`uint16`|IPAP|IPAP Value in cmH20 *2 |
 |`0x0006`|`uint16`|EPAP|EPAP Value in cmH20 *2 |
 |`0x0008`|`uint16[25]`|Unknown1|25x uint16 value representing some measurement at 25Hz |

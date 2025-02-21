@@ -114,6 +114,11 @@
                     let unit = "Unknown";
                     if (i == 9){ title = "Leak Rate [1Hz] LPM*10"; unit = "l/min * 10" }
                     await createChart(data.map(itm => {return {x:  moment(itm.Timestamp).valueOf(), y: itm.Unknown4Ints[i]}}), title, unit);
+
+                    /*if (i == 3){
+                        await createChart(data.map(itm => {return {x:  moment(itm.Timestamp).valueOf(), y: itm.Unknown4Ints[i] & 0xff}}), "Unknown 4 - Offset 3 & 0xff", unit);
+                        await createChart(data.map(itm => {return {x:  moment(itm.Timestamp).valueOf(), y: itm.Unknown4Ints[i] >> 8}}), "Unknown 4 - Offset 3 >> 8", unit);
+                    }*/
                 }
             }
 
@@ -127,7 +132,7 @@
                     await createChart(data.map(itm => {return {x:  moment(itm.Timestamp).valueOf(), y: itm.Unknown6Ints[i]}}), `Unknown 6 - Offset ${i} [1Hz]`, "Unknown");
             }
             
-            await createChart(data.map(itm => {return {x:  moment(itm.Timestamp).valueOf(), y: itm.Reslex}}), "Reslex [1Hz]", "Reslex", 0);
+            //await createChart(data.map(itm => {return {x:  moment(itm.Timestamp).valueOf(), y: itm.Reslex}}), "Reslex [1Hz]", "Reslex", 0);
 
             await createChart(data.map(itm => {return {x:  moment(itm.Timestamp).valueOf(), y: itm.Terminator}}), "Terminator [1Hz]", "Terminator", 0);
 
