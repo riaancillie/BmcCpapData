@@ -1,4 +1,4 @@
-﻿using ConsoleApp5;
+﻿using BmcCpapFileParser;
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
@@ -11,7 +11,7 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 
-namespace ConsoleApp5
+namespace BmcCpapFileParser
 {
     internal class Program
     {
