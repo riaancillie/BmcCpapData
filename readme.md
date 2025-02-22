@@ -60,6 +60,8 @@ All data is in binary format.
 
 * [Data parsing strategy to make sense of it all](0b-parsing-strategy.md)
 
+* [Waveforms in the `.nnn` file packet](0c-waveforms.md)
+
 
 ## Session Visualizer
 * [Session 2025/02/21](https://riaancillie.github.io/BmcCpapData/?file=20250221)

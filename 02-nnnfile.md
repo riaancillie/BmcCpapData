@@ -2,6 +2,8 @@
 BMC stores measurements recorded during therapy (lovingly referred to as *waveforms* in this repo) in file extensions with sequential numbers e.g. `serialno.001`, `serialno.002`, `serialno.003` and so on.<br>
 Measurements are bundled into a 256 byte packet every second and appended to this file. This file keeps growing until it reaches 65536 packets, the maxiumum value of an unsigned 16-bit int. In file size, that would 65536 packets multiplied by 256 bytes, i.e. 16 777 216 bytes/16MB. Once this size is reached, a new file with the next sequential extension is created and data is appended there. Presumably extensions only go up to `.999`, in which case we will run out of numbers after just over two years worth of data. This also corresponds to a 16GB SD card full of data.
 
+There is still ongoing work in determining what each recorded signal represent. Please see [Waveforms in the `.nnn` file packet](0c-waveforms.md) for information. There also a Github issue where this can be discussed.
+
 The structure of each packet is as follows:
 
 
@@ -14,7 +16,16 @@ The structure of each packet is as follows:
 |`0x0008`|`uint16[25]`|Unknown1|25x uint16 value representing some measurement at 25Hz |
 |`0x003A`|`uint16[25]`|Unknown2|25x uint16 values representing some measurement at 25Hz |
 |`0x006C`|`uint16[25]`|Flow|25x uint16 values representing flow measurement at 25Hz |
-|`0x009E`|`uint16[10]`|Unknown 3|10x uint16 values representing some measurement at 10Hz |
+|`0x009E`|`uint16`|Unknown 3 Offset 0|uint16 value representing some measurement at 1Hz |
+|`0x00A0`|`uint16`|Unknown 3 Offset 1|uint16 value representing some measurement at 1Hz |
+|`0x00A2`|`uint16`|Unknown 3 Offset 2|uint16 value representing some measurement at 1Hz |
+|`0x00A4`|`uint16`|Unknown 3 Offset 3|uint16 value representing some measurement at 1Hz |
+|`0x00A6`|`uint16`|Unknown 3 Offset 4|uint16 value representing some measurement at 1Hz |
+|`0x00A8`|`uint16`|Unknown 3 Offset 5|uint16 value representing some measurement at 1Hz |
+|`0x00AA`|`uint16`|Unknown 3 Offset 6|uint16 value representing some measurement at 1Hz |
+|`0x00AC`|`uint16`|Unknown 3 Offset 7|uint16 value representing some measurement at 1Hz |
+|`0x00AE`|`uint16`|Unknown 3 Offset 8|uint16 value representing some measurement at 1Hz |
+|`0x00B0`|`uint16`|Unknown 3 Offset 9|uint16 value representing some measurement at 1Hz |
 |`0x00B2`|`uint16`|Unknown 4 Offset 0|uint16 value representing some measurement at 1Hz |
 |`0x00B4`|`uint16`|Unknown 4 Offset 1|uint16 value representing some measurement at 1Hz |
 |`0x00B6`|`uint16`|Unknown 4 Offset 2|uint16 value representing some measurement at 1Hz |

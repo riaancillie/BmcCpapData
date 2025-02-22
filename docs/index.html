@@ -65,27 +65,34 @@
     <script>
 
         var charts =  [];
+        var data = [];
 
         let colorsEvents = {"HYP": "#BFD970", "OSA": "#BB6D84", "CSA": "#F08764"}
         let colors = ["#e3adee", "#f66283", "#5fc0c1", "#f79e34", "#9767ff", "#facc4a"];
         let colorIndex = 0;
 
+        Array.prototype.max = function() {        return Math.max.apply(null, this);        };
+        Array.prototype.min = function() {        return Math.min.apply(null, this);        };
+        Array.prototype.avg = function() {        return this.reduce((a,b) => a+b) / this.length;        };
+        let remap = function(x, oldLow, oldHigh, newLow, newHigh) {      return newLow + (newHigh-newLow) * (x - oldLow) / (oldHigh - oldLow)};
+
+
 
         async function getData(url){
             let response = await fetch(`sdcard_data/${url}.json`);
             let json = await response.json();
-            let data = json.Packets;
+            data = json.Packets;
             //console.log(data);
 
-            $("#txtHeader").text("BMC G3 APAP A20 - "+json.Name);
+            $("#txtHeader").text("BMC G3 APAP A20 - "+json.Name); 
 
-            let mapBundledData = (data, keyName) => {
+            let mapBundledData = (data, keyName, yValFunc) => {
                 let result = [];                
                 for (let packet of data){
                     let startTime = moment(packet.Timestamp);
                     let period = 1000 / packet[keyName].length;
                     for (let val of packet[keyName]){
-                        result.push({x: startTime, y: val});
+                        result.push({x: startTime, y: yValFunc ? yValFunc(val) : val});
                         startTime += period;
                     }
                 }
@@ -104,16 +111,45 @@
 
             await createChart(data.map(itm => {return {x:  moment(itm.Timestamp).valueOf(), y: itm.RespirationRate * (itm.TidalVolume/1000)}}), "Minute Vent (Calculated as Tidal * Resp Rate / 1000) [1Hz]", "L/min", 0);
 
-            await createChart(mapBundledData(data, "Unknown1"), "Unknown1 [25Hz]", "Unknown");
-            await createChart(mapBundledData(data, "Unknown2"), "Unknown2 [25Hz]", "Unknown");
-            await createChart(mapBundledData(data, "Unknown3"), "Unknown3 [10Hz]", "Unknown");     
             
+            await createChart(mapBundledData(data, "Unknown1", (y) => y/10), "Unknown1 [25Hz]", "cmH20");
+            await createChart(mapBundledData(data, "Unknown1", (y) => y/6.66667), "Unknown1 mapped as Mask Pressure [25Hz]", "cmH20");
+            
+            await createChart(mapBundledData(data, "Unknown2", (y) => y), "Unknown2 [25Hz]", "Snore Score");
+            await createChart(mapBundledData(data, "Unknown2", (y) => remap(y, 344, 1023, 0, 10)), "Unknown 2 mapped as Snoring Score (0-10) [25Hz]", "Snore Score");
+
+
+
+            //Unknown3
+            var unknown3Series = [];
+            for (let i = 0; i < data[0].Unknown3.length; i++){                   
+                unknown3Series.push({
+                    name: `Unknown 3 - Offset ${i} [1Hz]`,
+                    data: data.map(itm => {return {x:  moment(itm.Timestamp).valueOf(), y: itm.Unknown3[i]}})
+                })
+            }
+            await createChart(unknown3Series, "Unknown3", "Unknown", null, true);
+
+            /*await createChart(mapBundledData(data, "Unknown3"), "Unknown3 [10Hz]", "Unknown");     
+        
+
+            for (let i = 0; i < data[0].Unknown3.length; i++){
+                let title = `Unknown 3 - Offset ${i} [1Hz]`;
+                let unit = "Unknown";
+                await createChart(data.map(itm => {return {x:  moment(itm.Timestamp).valueOf(), y: itm.Unknown3[i]}}), title, unit);
+            }*/
+
             for (let i = 0; i < data[0].Unknown4Ints.length; i++){
                 if ([4, 7, 8].indexOf(i) < 0){ //Skip these signals. They don't change
                     let title = `Unknown 4 - Offset ${i} [1Hz]`;
                     let unit = "Unknown";
                     if (i == 9){ title = "Leak Rate [1Hz] LPM*10"; unit = "l/min * 10" }
                     await createChart(data.map(itm => {return {x:  moment(itm.Timestamp).valueOf(), y: itm.Unknown4Ints[i]}}), title, unit);
+
+                    /*if (i == 0){
+                        await createChart(data.map(itm => {return {x:  moment(itm.Timestamp).valueOf(), y: itm.Unknown4Ints[i] >> 8}}), title, unit);
+                        await createChart(data.map(itm => {return {x:  moment(itm.Timestamp).valueOf(), y: itm.Unknown4Ints[i] & 0xff}}), title, unit);
+                    }*/
 
                     /*if (i == 3){
                         await createChart(data.map(itm => {return {x:  moment(itm.Timestamp).valueOf(), y: itm.Unknown4Ints[i] & 0xff}}), "Unknown 4 - Offset 3 & 0xff", unit);
@@ -262,7 +298,7 @@
             charts.push(chart);
         }
 
-        async function createChart(chartData, name, unitText, suggestedMin){
+        async function createChart(chartData, name, unitText, suggestedMin, multipleDatasets){
             let newDom = $(`<div class="chartRow"><div class="rowHandle"><i class="fa-solid fa-up-down-left-right btnPan"></i> <i class="fa fa-trash btnDelete" aria-hidden="true"></i></div><canvas style="width: 100%; height: 150px"></canvas></div>`);
             $("#pnlCharts").append(newDom);
 
@@ -277,22 +313,37 @@
                 }
             };
 
-            let chart = new Chart(
-                $("canvas", newDom)[0],
-                {
-                type: 'line',
-                data: {
-                    datasets: [
-                    {
-                        label: name,
-                        data: chartData,
+            let datasets = [];
+            if (multipleDatasets){
+                for (let series of chartData){
+                    datasets.push({
+                        label: series.name,
+                        data: series.data,
                         borderWidth: 1,
                         radius: 0,
                         lineTension: 0,
                         backgroundColor: colors[colorIndex % colors.length],
                         borderColor: colors[colorIndex++ % colors.length]
-                    }
-                    ]
+                    })
+                }
+            }else{
+                datasets = [{
+                    label: name,
+                    data: chartData,
+                    borderWidth: 1,
+                    radius: 0,
+                    lineTension: 0,
+                    backgroundColor: colors[colorIndex % colors.length],
+                    borderColor: colors[colorIndex++ % colors.length]
+                }]
+            }        
+
+            let chart = new Chart(
+                $("canvas", newDom)[0],
+                {
+                type: 'line',
+                data: {
+                    datasets: datasets
                 },
                 options: {
                     parsing: false,
