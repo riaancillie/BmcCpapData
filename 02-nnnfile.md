@@ -1,6 +1,6 @@
 # The *.nnn* File (Waveforms)
 BMC stores measurements recorded during therapy (lovingly referred to as *waveforms* in this repo) in file extensions with sequential numbers e.g. `serialno.001`, `serialno.002`, `serialno.003` and so on.<br>
-Measurements are bundled into a 256 byte packet every second and appended to this file. This file keeps growing until it reaches 65536 packets, the maxiumum value of an unsigned 16-bit int. In file size, that would 65536 packets multiplied by 256 bytes, i.e. 16 777 216 bytes/16MB. Once this size is reached, a new file with the next sequential extension is created and data is appended there. Presumably extensions only go up to `.999`, in which case we will run out of numbers after just over two years worth of data. This also corresponds to a 16GB SD card full of data.
+Measurements are bundled into a 256 byte packet every second and appended to this file. This file keeps growing until it reaches 65536 packets, the maxiumum value of an unsigned 16-bit int. In file size, that would 65536 packets multiplied by 256 bytes, i.e. 16 777 216 bytes/16MB. Once this size is reached, a new file with the next sequential extension is created and data is appended there. Extensions go up to `.029` meaning that 30x 16MB files are kept. Once the end of `.029` is reached, data starting overwriting again at `.000`; 
 
 There is still ongoing work in determining what each recorded signal represent. Please see [Waveforms in the `.nnn` file packet](0c-waveforms.md) for information. There also a Github issue where this can be discussed.
 

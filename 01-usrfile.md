@@ -95,7 +95,10 @@ Historical sessions format: Offsets are relative to the start of the session.
 |Offset|Length|Description|
 |---------|----------|---|
 |0x00|uint8|Header equal to `0xE1`|
+|0x01|uint32|Absolute byte offset in this file where next session starts|
+|0x05|uint16|Usually equal to `0x0040`|
 |0x07|uint16|The uint16 [encoded date](0a-date-encoding.md) when this session starts|
+|0x09|uint16|Usually equal to `0x083D`|
 |0x0F|uint16|The session duration in minutes|
 |0x45|Variable|Messages of unknown meaning (possibly stats) following the format <br>`uint8t Message Type`<br>`uint16_t Data Byte 1`<br>`uint16_t Data Byte 2`<br>We read using this method until we get a Message Type of `0xff` and two data bytes of `0xff` each.<br>The message type in this block are from `0x81` to `0x87` but I haven't been able to decipher their meaning|
 |Follows after `0xff ffff ffff`|Variable|Session Data Messages<br>`uint8: Message Type (observed to be between 0x80 and 0x8f)`<br>`uint16: Count of payload for message`<br>`uint16: 0x0000`<br>`Session Data Message Payload follows, explained in next table`|
@@ -106,6 +109,6 @@ The session data messages, have different payload formats and length according t
 |Message Type|Description|
 |----|----|
 |`0x86` or `0x82`|Array of `uint32` integers of length given in session data message i.e. `uint32[payloadCount]`|
-|`0x83` or `0x84` or `0x85`|Arrays of 3 bytes each, of length payload length, each representing a respiratory event. i.e. `uint8[payloadCount][3]`<br>Message Type `0x83: OSA`, `0x84: HYP`, `0x85: CSA`<br>`msg[i][0]: Hours since noon`<br>`msg[i][1]: Minute in hour`<br>`msg[i][2]: Duration in seconds`|
+|`0x83` or `0x84` or `0x87`|Arrays of 3 bytes each, of length payload length, each representing a respiratory event. i.e. `uint8[payloadCount][3]`<br>Message Type `0x83: OSA`, `0x84: HYP`, `0x87: CSA`<br>`msg[i][0]: Hours since noon`<br>`msg[i][1]: Minute in hour`<br>`msg[i][2]: Duration in seconds`|
 |All others|Array of `uint16` integers of length given in session data message i.e. `uint16[payloadCount]`|
 

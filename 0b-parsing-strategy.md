@@ -6,20 +6,25 @@ In the ideal scenario, we would be able to parse BMC's data with such confidence
 We read the `.USR` file and 
 * Retrieve the device's serial number, model etc.
 * Read the current session in progress's start timestamp, duration and respiratory events
-* Read the stored sessions for start time, duration and respiratory events
+* Read all the stored sessions for start time, duration and respiratory events
 
-We read the `.idx` file for 
-* Machine settings for each date
+Each `.idx` file record represents machine settings saved at least daily at noon, and a pointer to the `.nnn` waveform file and position in the file where data is currently being written. For each `.idx` record we read
+* The date of the record
+* The machine settings saved 
+* The `.nnn` file number and offset in file.
 
-We read the `.nnn` file for 
-* A list of waveforms, each with a timestamp
+Since data is written in a cyclic manner to the `.nnn` files, i.e. old waveforms being overwritten as new data is being recorded, we need to determine which of the `.idx` record actually have valid waveform data. 
 
-Since the only thing all of the above files have in common is a date, we can match data up using timestamps.
-1. Read all sessions from the '.USR' file for the start of each session and it's duration and respiratory events
-2. For each session from step 1, from the list of machine settings imported from the `.idx` file, find a packet that has a matching date.
-3. Find all the waveforms loaded from the `.nnn` files and select those that fall between the session's start timestamp and end timestamp
+To do this we work backwards from the latest `.idx` entry and load the `.nnn` packet the entry points to. If the date difference between the `.idx` entry and the waveform packet timestamp is more than a couple of days, we stop adding valid entries. If not, the `.idx` entry is valid and we keep a list of them. 
+By doing this, we have a built a list of valid `.idx` entry with the `.nnn` packet associated with the entry.
 
-The process could be refined further to load sessions only for a certain date perhaps, but it might be easier to load all the data from the three files into memory first. 
+Now we start matching up the `.USR` sessions to the valid `.idx` entries. For each session, we find the last `.idx` entry's where it's waveform packet's timestamp is less than the session's start timestamp. This gives us a rough position in the waveform file to start parsing.
+For the machine settings, we simply need to look for the latest `.idx` record with the same date as the `.USR` session. 
+
+Now that we have a link between the `.USR` session with all the respiratory events, the `.IDX` file with machine settings, the offset at which to begin looking in the `.nnn` waveform files, it's simply of matter of opening the appropriate `.nnn` file at the given offset, skip packets one by one until we find the first packet that matches the date of the session, and read packets until the timestamp exceeds noon.
+
+
+When importing all data, instead of only selected dates, the above strategy is not as efficient. We could have simply loaded all the `.nnn` waveforms and matched them up to `.idx` dates. But doing so would make importing only select data (such as new sessions since last import to OSCAR) highly inefficient and very slow. Imagine parsin 1.9 million packets just to find the last 12 hours worth of it. 
 
 #### 1. The fallback strategy
 The biggest concern is that the parsing of the `.USR` file could fail due. The most likely culprits are:

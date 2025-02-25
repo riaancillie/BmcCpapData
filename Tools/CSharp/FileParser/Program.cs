@@ -1,8 +1,11 @@
 ﻿using BmcCpapFileParser;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Converters;
 using System;
+using System.CodeDom;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net.Sockets;
@@ -17,45 +20,246 @@ namespace BmcCpapFileParser
     {
         static void Main(string[] args)
         {            
-            var folder = "2025-02-21";            
-            var pathusr = $"T:\\CPAP\\BMC G3 SD Card\\{folder}\\24C36003.USR";
-            var startTime = DateTime.Parse("2025/02/20 20:00:00");
-            var endTime = DateTime.Parse("2025/02/21 07:00:00");
+            var folder = "2025-02-21";
+            //var pathusr = $"T:\\CPAP\\BMC G3 SD Card\\{folder}\\24C36003.USR";
+            //var pathusr = @"T:\CPAP\Other\Cheri\20401493.USR";
+            //var pathusr = @"T:\CPAP\Other\Matt\23212180.USR";
+            //var pathusr = @"T:\CPAP\Other\Techguy\22611230.USR";
+            var pathusr = @"T:\CPAP\Other\bipap\22A15007.USR";
+            var startTime = DateTime.Parse("2024/09/22 12:00:00");
+            var endTime = DateTime.Parse("2024/09/23 11:59:00");
+            var readWaveforms = false;
+
+            List<BmcUsrSession> allUsrSessions = new List<BmcUsrSession>();
+            List<BmcIdxEntry> allIdxSessions = new List<BmcIdxEntry>();
+            
+            List<BmcIdxEntry> validIdxSessions = new List<BmcIdxEntry>();
+
+            List<BmcUsrIdxLink> usrIdxLinks = new List<BmcUsrIdxLink>();
+
+            var sw = Stopwatch.StartNew();
+
+            #region USR file parsing
+
+            var machineInfo = ReadUsrFileMachineInfo(pathusr);
+            allUsrSessions.AddRange(ReadUsrFileSessions(pathusr));
+            allUsrSessions.AddRange(ReadUsrFileLatest(pathusr));
+
+            sw.Stop();
+            Console.WriteLine($"Parsing .usr files took {sw.Elapsed.ToString()}. {allUsrSessions.Count} sessions read ");
+            sw.Reset();
+            sw.Start();
+
+            #endregion
+
+            #region .IDX file parsing
+            allIdxSessions = ReadIdxFile(Path.ChangeExtension(pathusr, ".idx"));
+
+            sw.Stop();
+            Console.WriteLine($"Parsing .idx files took {sw.Elapsed.ToString()}. {allIdxSessions.Count} sessions read ");
+            sw.Reset();
+            sw.Start();
+            #endregion
+
+            #region Get respiratory events
 
 
-            List<BmcSession> sessions = new List<BmcSession>();
+            //var allRespEvents = allUsrSessions.Select(x => x.RespiratoryEvents).SelectMany(x => x);
 
-            List<BmcPacket> packets = new List<BmcPacket>();
+            //Console.WriteLine($"{allRespEvents.Count()} respiratory events found in .USR file");
 
-            var nnnFile = 0;
+            //var allRespEventsForThisSession = allRespEvents.Where(x => x.Start >= startTime && x.End <= endTime);
 
-            while (true)
+            //var groupedEvents = allRespEventsForThisSession.GroupBy(x => x.EventType).ToDictionary(x => x.Key, g => g.Select(x => new { StartTimestamp = x.Start, Duration = x.DurationSeconds }));
+
+            //var multiSessions = allUsrSessions.GroupBy(x => x.StartTime.Date).Where(x => x.Count() > 1).ToList();
+
+            #endregion
+
+
+            #region Since .nnn waveform files are cyclicly overwritten, find valid .IDX files
+
+            //We know that the last entry in the .IDX file is the latest so
+            //  Parse all the sessions the .IDX file
+            //  Work from the last session backward
+            //  For each session, read the .nnn packet the IDX sessions points to
+            //  If the date of the waveform packet and .IDX session packet differs by more than a couple of days
+            //    we reached the part where data is being overwritten and consider that IDX session and all before it unusable
+            //    since their waveform data has been overwritten
+
+            var allIdxSessionsReversed = allIdxSessions.AsEnumerable().Reverse();
+
+            foreach (var idxSession in allIdxSessionsReversed)
             {
-                var extension = nnnFile.ToString("000");
-                var pathnnn = Path.ChangeExtension(pathusr, extension);
+                var startFilename = Path.ChangeExtension(pathusr, idxSession.StartFileExtension);
+                var endFilename = Path.ChangeExtension(pathusr, idxSession.NextSessionFileExtension);
+                BmcWaveformPacketPlaceholder firstNnnPacket;
+                //BmcWaveformPacketPlaceholder end = null;
 
-                if (!File.Exists(pathnnn))
-                    break;
 
-                nnnFile++;
-
-                var bytes = System.IO.File.ReadAllBytes(pathnnn);
-
-                var ms = new MemoryStream(bytes);
-                var c = new BinaryReader(ms);
-
-                while (ms.Position != ms.Length)
+                using (var fs = File.OpenRead(startFilename))
                 {
-                    var packet = new BmcPacket(c);
-                    if (packet.Flow.Any(x => x > 5000))
-                    {
-
-                    }
-                    packets.Add(packet);
+                    fs.Position = idxSession.StartOffsetByte;
+                    firstNnnPacket = new BmcWaveformPacketPlaceholder(startFilename, new BinaryReader(fs));
+                    idxSession.FirstPacket = firstNnnPacket;
                 }
 
+                if (idxSession.HasValidNextSession)
+                {
+                    using (var fs = File.OpenRead(endFilename))
+                    {
+                        fs.Position = idxSession.NextSessionOffsetByte - 256;
+                        var lastNnnPacket = new BmcWaveformPacketPlaceholder(startFilename, new BinaryReader(fs));
+                        idxSession.LastPacket = lastNnnPacket;
+                    }
+                }
+
+                var daysDifference = Math.Abs(firstNnnPacket.Timestamp.Subtract(idxSession.Timestamp).TotalDays);
+
+                if (daysDifference >= 3)
+                    break;
+
+                validIdxSessions.Insert(0, idxSession);
             }
-            var pk = packets.FirstOrDefault(x => x.Timestamp > DateTime.Parse("2025/02/15 12:00:00"));
+
+            var d = validIdxSessions.Select(s => new
+            {
+                Index = s.Index.ToString("X2"),
+                IdxTimestamp = s.Timestamp,
+                FirstPacket = s.FirstPacket.Timestamp,
+                LastPacket = s.LastPacket?.Timestamp
+            });
+
+            #endregion
+
+            #region Match up .nnn file sessions to idx file
+
+            //The USR session date starts at noon of the day e.g. 2025/02/15 12:00:00
+            //The IDX session date starts at midnight, therefore for the example date, we need the USR session with date 2025/02/15 00:00:00
+
+
+            foreach (var usrSession in allUsrSessions)
+            {
+                var foundIdxEntry = validIdxSessions.LastOrDefault(x => usrSession.StartTime >= x.FirstPacket.Timestamp);
+                if (foundIdxEntry != null)
+                    usrIdxLinks.Add(new BmcUsrIdxLink
+                    {
+                        IdxEntry = foundIdxEntry,
+                        UsrSession = usrSession,
+                        MachineSettings = (allIdxSessions.FirstOrDefault(x => x.Timestamp > usrSession.StartTime)?.MachineSettings) ?? (allIdxSessions.Last().MachineSettings)
+                    });                
+            }
+
+            /*var minIdxStartTime = validIdxSessions.Min(x => x.Timestamp);
+            var maxIdxStartTime = validIdxSessions.Max(x => x.Timestamp);
+
+            var validSessions = allUsrSessions.Where(s => s.StartTime.Date >= minIdxStartTime);
+
+            var links = new List<dynamic>();
+
+            foreach (var validSession in validSessions)
+            {
+                var idxSession = validIdxSessions.FirstOrDefault(x => validSession.StartTime.Date == x.Timestamp.Date);
+                links.Add(new
+                {
+                    Idx = idxSession,
+                    Session = validSession
+                });
+                
+            }*/
+
+            Console.WriteLine($"{usrIdxLinks.Count} USR sessions with waveforms found");
+
+            #endregion
+
+            Console.WriteLine("\nSessions:\n-----------------------");
+            var i = 0;
+            foreach (var link in usrIdxLinks)
+            {
+                Console.Write(i.ToString().PadLeft(3));
+                Console.Write(". ");
+                Console.Write(link.UsrSession.StartTime.ToString("yyyy/MM/dd").PadRight(15));
+                if (i % 4 == 3) Console.Write("\n");
+                i++;
+                
+            }
+            Console.WriteLine("");
+            Console.Write("\nSelect a session: ");
+            int selectedLinkIdx = int.Parse(Console.ReadLine());
+
+
+
+            var selectedUsrIdxLink = usrIdxLinks[selectedLinkIdx];
+
+            sw.Reset();
+            sw.Start();
+            var session = ReadSession(pathusr, selectedUsrIdxLink);
+            Console.WriteLine($"Read session took {sw.Elapsed.ToString()}. Writing JSON file");
+
+
+            #region .nnn file parsing
+
+            //List<BmcWaveformPacket> waveformPackets = new List<BmcWaveformPacket>();
+            //List<BmcWaveformPacketPlaceholder> waveformPacketsPlaceholders = new List<BmcWaveformPacketPlaceholder>();
+
+            //var nnnFile = 0;
+
+            //sw = Stopwatch.StartNew();
+
+            //DateTime minDate = DateTime.MaxValue;
+            //DateTime maxDate = DateTime.MinValue;
+
+            //while (true)
+            //{
+            //    var extension = nnnFile.ToString("000");
+            //    var pathnnn = Path.ChangeExtension(pathusr, extension);
+
+            //    if (!File.Exists(pathnnn))
+            //        break;
+
+            //    nnnFile++;
+
+            //    //var bytes = System.IO.File.ReadAllBytes(pathnnn);
+
+            //    //var ms = new MemoryStream(bytes);
+
+
+            //    var fs = new FileStream(pathnnn, System.IO.FileMode.Open);
+
+            //    var c = new BinaryReader(fs);
+
+            //    while (fs.Position != fs.Length)
+            //    {
+            //        if (readWaveforms)
+            //        {
+            //            var packet = new BmcWaveformPacket(c);                        
+            //            waveformPackets.Add(packet);                        
+            //        } 
+            //        else
+            //        {
+            //            var placeholder = new BmcWaveformPacketPlaceholder(pathnnn, c);
+            //            waveformPacketsPlaceholders.Add(placeholder);
+            //            if (placeholder.Timestamp < minDate) minDate = placeholder.Timestamp;
+            //            if (placeholder.Timestamp > maxDate) maxDate = placeholder.Timestamp;
+            //        }
+            //    }
+
+            //}
+
+            //sw.Stop();
+            //Console.WriteLine($"Parsing .nnn files took {sw.Elapsed.ToString()}. {(!readWaveforms ? waveformPacketsPlaceholders.Count : waveformPackets.Count)} {(!readWaveforms ? "placeholders" : "packets")} read");
+
+            //var packetDates = waveformPacketsPlaceholders.GroupBy(x => x.Timestamp.Date).ToList();
+
+            //var data = waveformPackets
+            //    .SkipWhile(x => x.Timestamp <= startTime)
+            //    .TakeWhile(x => x.Timestamp <= endTime);
+
+
+            #endregion
+
+            #region debug
+            /*var pk = packets.FirstOrDefault(x => x.Timestamp > DateTime.Parse("2025/02/15 12:00:00"));
             var idx = packets.IndexOf(pk);
             var offset = idx * 256;
 
@@ -65,7 +269,7 @@ namespace BmcCpapFileParser
 
             var data = packets.Skip(packetStart).Take(60);
 
-            var csv = new BmcCsvList(data);
+            var csv = new BmcCsvList(data);*/
 
 
 
@@ -95,143 +299,235 @@ namespace BmcCpapFileParser
             foreach (var item in ranges)
                 result += item + "\r\n";*/
 
+            //var termsNot4 = waveformPackets.GroupBy(x => x.Terminator).ToList();
+            //var termsUnique = waveformPackets.Select(x => x.Terminator).ToList().Distinct().ToList();
+
+            #endregion
 
             //var result = JsonConvert.SerializeObject(packets, Formatting.Indented);
             //Console.WriteLine(result);
 
-            var termsNot4 = packets.GroupBy(x => x.Terminator).ToList();
-            var termsUnique = packets.Select(x => x.Terminator).ToList().Distinct().ToList();
 
 
-            //packetStart = packets.FindIndex(x => x.Timestamp >= DateTime.Parse("2025/02/15 00:01:00"));
-            data = packets
-                .SkipWhile(x => x.Timestamp <= startTime)
-                .TakeWhile(x => x.Timestamp <= endTime);
+            //Object data = null;
 
-            
-
-            sessions.AddRange(ReadUsrFileLatest(pathusr));
-            sessions.AddRange(ReadUsrFileSessions(pathusr));
-
-            var allRespEvents = sessions.Select(x => x.RespiratoryEvents).SelectMany(x => x);
-            var allRespEventsForThisSession = allRespEvents.Where(x => x.Start >= startTime && x.End <= endTime);
-
-            var groupedEvents = allRespEventsForThisSession.GroupBy(x => x.EventType).ToDictionary(x => x.Key, g => g.Select(x => new { StartTimestamp = x.Start, Duration = x.DurationSeconds }));
+            var mappedEvents = session.RespiratoryEvents.GroupBy(x => x.EventType).ToDictionary(x => x.Key, g => g.Select(x => new { StartTimestamp = x.Start, Duration = x.DurationSeconds }));
 
             var jsonData = new
             {
-                Name = startTime.ToString("yyyy/MM/dd HH:mm:ss") + " - " + endTime.ToString("HH:mm:ss"),
-                Events = groupedEvents,
-                Packets = data
+                Name = session.Date.ToString("yyyy/MM/dd HH:mm:ss") + " - " + endTime.ToString("HH:mm:ss"),
+                Events = mappedEvents,
+                Packets = session.Waveforms,
+                MachineSettings = selectedUsrIdxLink.MachineSettings,
+                MachineInfo = machineInfo
             };
 
             var json = JsonConvert.SerializeObject(jsonData, Formatting.Indented);
-            System.IO.File.WriteAllText($"t:\\CPAP\\{startTime.ToString("yyyyMMdd")}.json", json);
+            var exportPath = $"t:\\CPAP\\{machineInfo.SerialNumber}-{session.Date.ToString("yyyyMMdd")}.json";
+            System.IO.File.WriteAllText(exportPath, json);
+
+            Console.WriteLine($"JSON exported to {exportPath}");
+            Console.ReadKey();
 
         }
 
-        public static IEnumerable<BmcSession> ReadUsrFileSessions(string aPath)
+        public static BmcSession ReadSession(string aUsrFilePath, BmcUsrIdxLink aLink)
         {
-            var sessions = new List<BmcSession>();
-            
-            var strm = System.IO.File.OpenRead(aPath);            
-            strm.Position = 0x102338;
+            var session = new BmcSession();
+            session.Date = aLink.UsrSession.StartTime;
+            session.RespiratoryEvents = aLink.UsrSession.RespiratoryEvents;
+            session.MachineSettings = aLink.IdxEntry.MachineSettings;
 
-            List<int> msgTypes = new List<int>();
+            var readCompleted = false;
 
-            BinaryReader b = new BinaryReader(strm);
-            var sessionCount = b.ReadUInt16();
-            b.ReadUInt16();
-            b.ReadUInt16();
-            b.ReadUInt16();
+            var waveformFilePath = Path.ChangeExtension(aUsrFilePath, aLink.IdxEntry.StartFileExtension);
+            var waveformFileOffset = aLink.IdxEntry.StartOffsetByte;
+            BmcWaveformPacket lastPacket = null;
+            var sessionEndTimestamp = aLink.UsrSession.StartTime.AddDays(1);
 
-            var lastMessageType = 0;
-            long lastMessageOffset = 0;
-
-            while (true)
+            while (!readCompleted)
             {
-                var session = new BmcSession();
-                sessions.Add(session);
-
-                var header = b.ReadByte();
-                b.ReadUInt16();
-                b.ReadUInt16();
-                b.ReadUInt16();
-
-                var b1 = b.ReadByte();
-                var b2 = b.ReadByte();
-                var sessionDate = DecodeDate(b1, b2);
-                session.StartTime = sessionDate;
-
-                b.ReadUInt16();
-                b.ReadUInt16();
-                b.ReadUInt16();
-
-                var sessionDurationMinutes = b.ReadUInt16();
-                var sessionDuration = TimeSpan.FromMinutes(sessionDurationMinutes);
-                session.Duration = sessionDuration;
-
-                byte[] tmpBuffer = new byte[256];
-
-                b.Read(tmpBuffer, 0, 52);
-
-                while (true)
+                using (var f = File.OpenRead(waveformFilePath))
                 {
-                    int msgType = b.ReadByte();
-                    var d1 = b.ReadInt16();
-                    var d2 = b.ReadInt16();
+                    BinaryReader rdr = new BinaryReader(f);
+                    f.Position = waveformFileOffset;
 
-                    if (msgType == 0xff)
-                        break;
-                }
-
-                while (true)
-                {
-                    int msgType = b.ReadByte();
-
-                    if (msgType < 0x80 || msgType > 0x8f)
-                        throw new Exception("Invalid message type");
-
-                    if (!msgTypes.Contains(msgType))
-                        msgTypes.Add(msgType);
-
-                    lastMessageType = msgType;
-                    lastMessageOffset = strm.Position - 1;
-
-                    var length = b.ReadInt16();
-                    b.ReadInt16();
-
-                    for (var i = 0; i < length; i++)
+                    while (f.Position < f.Length)
                     {
-                        if (msgType == 0x86 || msgType == 0x82)
-                        {
-                            var dt = b.ReadInt32();
-                        }
-                        else if (msgType == 0x84 || msgType == 0x83 ||  msgType == 0x85)
-                        {
-                            b.Read(tmpBuffer, 0, 3);
+                        BmcWaveformPacket packet = new BmcWaveformPacket(rdr);
 
-
-                            var evt = new BmcRespiratoryEvent(msgType, tmpBuffer, sessionDate);
-                            session.RespiratoryEvents.Add(evt);
-                        }
-                        else
+                        //If the packet we just read is earlier than the previous one, the file has wrapped before noon and the data is incomplete.
+                        if (lastPacket != null && packet.Timestamp < lastPacket.Timestamp)
                         {
-                            var dt = b.ReadInt16();
+                            readCompleted = true;
+                            break;
                         }
-                        
+
+                        lastPacket = packet;
+
+                        //If the packet is earlier than the session start timestamp skip it
+                        if (packet.Timestamp < session.Date)
+                            continue;
+
+                        //If the packet is later than the session end timestamp then all waveforms are read.
+                        if (packet.Timestamp >= sessionEndTimestamp)
+                        {
+                            readCompleted = true;
+                            break;
+                        }
+
+                        //This packet belongs to this session. Add it
+                        session.Waveforms.Add(packet);
+                           
                     }
 
-                    if (strm.Position == strm.Length || PeekByte(strm) == 0xE1)
-                        break;
+                    waveformFilePath = GetNextNnnFile(waveformFilePath);
+                    waveformFileOffset = 0x800;
                 }
+            }
 
-                if (strm.Position  == strm.Length)
-                    break;
+            return session;
+            
+        }
 
+        public static string GetNextNnnFile(string aCurrentFilePath)
+        {
+            var currentExtension = int.Parse(aCurrentFilePath.Substring(aCurrentFilePath.Length - 3));
+            var newPath = Path.ChangeExtension(aCurrentFilePath, (currentExtension+1).ToString("000"));
+            if (!System.IO.File.Exists(newPath))
+                return Path.ChangeExtension(aCurrentFilePath, "000");
+            else
+                return newPath;
+        }
+
+        public static IEnumerable<BmcUsrSession> ReadUsrFileSessions(string aPath)
+        {
+            var sessions = new List<BmcUsrSession>();
+
+            using (var strm = System.IO.File.OpenRead(aPath))
+            {
+                strm.Position = 0x102338;
+
+                List<int> msgTypes = new List<int>();
+
+                BinaryReader b = new BinaryReader(strm);
+                var sessionCount = b.ReadUInt16();
+                b.ReadUInt16();
+                b.ReadUInt16();
+                b.ReadUInt16();
+
+                var lastMessageType = 0;
+                long lastMessageOffset = 0;
+
+                while (true)
+                {
+                    var session = new BmcUsrSession();
+                    sessions.Add(session);
+
+                    var header = b.ReadByte();
+                    b.ReadUInt16();
+                    b.ReadUInt16();
+                    b.ReadUInt16();
+
+                    var b1 = b.ReadByte();
+                    var b2 = b.ReadByte();
+                    var sessionDate = DecodeDate(b1, b2);
+                    session.StartTime = sessionDate;
+
+                    b.ReadUInt16();
+                    b.ReadUInt16();
+                    b.ReadUInt16();
+
+                    var sessionDurationMinutes = b.ReadUInt16();
+                    var sessionDuration = TimeSpan.FromMinutes(sessionDurationMinutes);
+                    session.Duration = sessionDuration;
+
+                    byte[] tmpBuffer = new byte[256];
+
+                    b.Read(tmpBuffer, 0, 52);
+
+                    while (true)
+                    {
+                        int msgType = b.ReadByte();
+                        var d1 = b.ReadInt16();
+                        var d2 = b.ReadInt16();
+
+                        if (msgType == 0xff)
+                            break;
+                    }
+
+                    while (true)
+                    {
+                        int msgType = b.ReadByte();
+
+                        if (msgType < 0x80 || msgType > 0x8f)
+                            throw new Exception("Invalid message type");
+
+                        if (!msgTypes.Contains(msgType))
+                            msgTypes.Add(msgType);
+
+                        lastMessageType = msgType;
+                        lastMessageOffset = strm.Position - 1;
+
+                        var length = b.ReadInt16();
+                        b.ReadInt16();
+
+                        for (var i = 0; i < length; i++)
+                        {
+                            if (msgType == 0x86 || msgType == 0x82)
+                            {
+                                var dt = b.ReadInt32();
+                            }
+                            else if (msgType == 0x84 || msgType == 0x83 || /* msgType == 0x85 ||*/ msgType == 0x87)
+                            {
+                                b.Read(tmpBuffer, 0, 3);
+
+
+                                if (msgType == 0x84 || msgType == 0x83 || msgType == 0x87)
+                                {
+                                    var evt = new BmcRespiratoryEvent(msgType, tmpBuffer, sessionDate);
+                                    session.RespiratoryEvents.Add(evt);
+                                }
+
+
+                            }
+                            else
+                            {
+                                var dt = b.ReadInt16();
+                            }
+
+                        }
+
+                        if (strm.Position == strm.Length || PeekByte(strm) == 0xE1)
+                            break;
+                    }
+
+                    if (strm.Position == strm.Length)
+                        break;
+
+                }
             }
 
             return sessions;
+        }
+
+        public static List<BmcIdxEntry> ReadIdxFile(string aPath)
+        {
+            using (FileStream f = File.OpenRead(aPath))
+            {
+                BinaryReader rdr = new BinaryReader(f);
+                f.Position = 0x800;
+
+                var indexDays = new List<BmcIdxEntry>();
+
+                while (f.Position < f.Length)
+                {
+                    var indexedDay = new BmcIdxEntry(rdr);
+                    indexDays.Add(indexedDay);
+                }
+
+                return indexDays;
+            }
         }
 
         public static int PeekByte(Stream strm)
@@ -269,58 +565,77 @@ namespace BmcCpapFileParser
 
 
 
-        public static IEnumerable<BmcSession> ReadUsrFileLatest(string aPath)
+        public static IEnumerable<BmcUsrSession> ReadUsrFileLatest(string aPath)
         {
-            BmcSession session = new BmcSession();
+            BmcUsrSession session = new BmcUsrSession();
             
             var items = new List<BmcTodaySessionDataItem>();
-            var strm = System.IO.File.OpenRead(aPath);
-            var events = new List<BmcRespiratoryEvent>();
-
-            strm.Position = 0x431;
-            var byte1 = strm.ReadByte();
-            var byte2 = strm.ReadByte();
-
-            
-            DateTime startDate = DecodeDate(byte1, byte2);
-            session.StartTime = startDate;
-
-
-            strm.Position = 0x441;
-            do
+            using (var strm = System.IO.File.OpenRead(aPath))
             {
-                BmcTodaySessionDataItem itm = new BmcTodaySessionDataItem();
-                itm.ItemType = strm.ReadByte();
-                if (itm.ItemType == 0xff)
-                    break;
+                var events = new List<BmcRespiratoryEvent>();
 
-                if (itm.ItemType == 0x02)
+                strm.Position = 0x431;
+                var byte1 = strm.ReadByte();
+                var byte2 = strm.ReadByte();
+
+
+                DateTime startDate = DecodeDate(byte1, byte2);
+                session.StartTime = startDate;
+
+
+                strm.Position = 0x441;
+                do
                 {
-                    itm.DataLength = 3;
-                }
-                else 
-                {
-                    itm.DataLength = strm.ReadByte();
-                }
-                
+                    BmcTodaySessionDataItem itm = new BmcTodaySessionDataItem();
+                    itm.ItemType = strm.ReadByte();
+                    if (itm.ItemType == 0xff)
+                        break;
 
-                itm.Data = new byte[itm.DataLength];
-                strm.Read(itm.Data, 0, itm.DataLength);
-                items.Add(itm);
-                
-            } while (true);
+                    if (itm.ItemType == 0x02)
+                    {
+                        itm.DataLength = 3;
+                    }
+                    else
+                    {
+                        itm.DataLength = strm.ReadByte();
+                    }
 
-            events = items.Where(x => x.ItemType >= 0x07 && x.ItemType <= 0x09).Select(x => new BmcRespiratoryEvent(x, startDate)).ToList();
-            session.RespiratoryEvents.AddRange(events);
 
-            var str = JsonConvert.SerializeObject(items, Formatting.Indented);
+                    itm.Data = new byte[itm.DataLength];
+                    strm.Read(itm.Data, 0, itm.DataLength);
+                    items.Add(itm);
 
-            return new BmcSession[] { session };
+                } while (true);
+
+                events = items.Where(x => x.ItemType >= 0x07 && x.ItemType <= 0x09).Select(x => new BmcRespiratoryEvent(x, startDate)).ToList();
+                session.RespiratoryEvents.AddRange(events);
+
+                //var str = JsonConvert.SerializeObject(items, Formatting.Indented);
+            }
+
+            return new BmcUsrSession[] { session };
             
         }
+
+        public static BmcMachineInfo ReadUsrFileMachineInfo(string aUsrPath)
+        {
+            var machineInfo = new BmcMachineInfo();
+
+            using (var f = File.OpenRead(aUsrPath))
+            {
+                BinaryReader rdr = new BinaryReader(f);
+                f.Position = 0x2d;
+                machineInfo.SerialNumber = rdr.ReadNullTerminatedString().Trim();
+                f.Position = 0x2296;
+                machineInfo.Model = rdr.ReadNullTerminatedString().Trim();
+            }
+
+            return machineInfo;
+        }
+
     }
 
-    public class BmcPacket
+    public class BmcWaveformPacket
     {
         public DateTime Timestamp { get; protected set; }
 
@@ -354,7 +669,7 @@ namespace BmcCpapFileParser
         
         public int Terminator { get; protected set; }
 
-        public BmcPacket()
+        public BmcWaveformPacket()
         {
             Unknown1 = new List<int>();
             Unknown2 = new List<int>();
@@ -365,7 +680,7 @@ namespace BmcCpapFileParser
             this.Flow = new List<float>();
         }
 
-        public BmcPacket(BinaryReader aReader) : this()
+        public BmcWaveformPacket(BinaryReader aReader) : this()
         {
             var header = aReader.ReadUInt16();  //0 / 2
             this.Reslex = aReader.ReadUInt16(); //2 / 2
@@ -411,6 +726,37 @@ namespace BmcCpapFileParser
             var minute = aReader.ReadByte(); // 253 / 1
             var second = aReader.ReadByte(); // 254 / 1
             this.Terminator = aReader.ReadByte(); // 255 / 1
+
+            this.Timestamp = new DateTime(year, month, day, hour, minute, second);
+
+        }
+    }
+
+    public class BmcWaveformPacketPlaceholder
+    {
+        public DateTime Timestamp { get; protected set; }
+        public string Filename { get; set; }
+
+        public long ByteOffset { get; set; }
+        
+
+        public BmcWaveformPacketPlaceholder()
+        {
+            
+        }
+
+        public BmcWaveformPacketPlaceholder(string Filename,  BinaryReader aReader) : this()
+        {
+            this.Filename = Filename;
+            ByteOffset = aReader.BaseStream.Position;
+            aReader.BaseStream.Position += 0xF8;
+            var year = aReader.ReadUInt16(); // 248 / 2
+            var month = aReader.ReadByte(); // 250 / 1
+            var day = aReader.ReadByte(); // 251 / 1
+            var hour = aReader.ReadByte(); // 252 / 1
+            var minute = aReader.ReadByte(); // 253 / 1
+            var second = aReader.ReadByte(); // 254 / 1
+            var terminator = aReader.ReadByte(); // 255 / 1
 
             this.Timestamp = new DateTime(year, month, day, hour, minute, second);
 
@@ -492,7 +838,7 @@ namespace BmcCpapFileParser
             return result;
         }
 
-        public BmcCsvList(IEnumerable<BmcPacket> aData)
+        public BmcCsvList(IEnumerable<BmcWaveformPacket> aData)
         {
             this.IPAP = MakeDiscreteValueList(aData.Select(x => x.IPAP));
             this.EPAP = MakeDiscreteValueList(aData.Select(x => x.EPAP));
@@ -559,7 +905,7 @@ namespace BmcCpapFileParser
             {
                 case 0x84: this.EventType = "HYP"; break;
                 case 0x83: this.EventType = "OSA"; break;
-                case 0x85: this.EventType = "CSA"; break;
+                case 0x87: this.EventType = "CSA"; break;
                 default: this.EventType = "UNKNOWN"; break;
             }
         }
@@ -568,13 +914,313 @@ namespace BmcCpapFileParser
 
     }
 
-    public class BmcSession
+    public class BmcUsrSession
     {
         public DateTime StartTime { get; set; }
         public TimeSpan Duration { get; set; }
 
         public List<BmcRespiratoryEvent> RespiratoryEvents { get; set; } = new List<BmcRespiratoryEvent>();
     }
+
+    public class BmcIdxEntry
+    {
+        public DateTime Timestamp { get; set; }        
+        public int Index { get; set; }
+
+        public int StartOffsetPacket { get; set; }
+        public int StartOffsetByte { get { return StartOffsetPacket * 256; } }
+
+        public int StartFileIndex { get; set; }
+        public string StartFileExtension { get { return StartFileIndex.ToString("000"); } }        
+
+        public BmcWaveformPacketPlaceholder FirstPacket { get; set; }
+        public BmcWaveformPacketPlaceholder LastPacket { get; set; }
+
+        public int NextSessionOffsetPacket { get; set; }
+        public int NextSessionOffsetByte { get { return NextSessionOffsetPacket * 256; } }
+
+        public bool HasValidNextSession { get; set; }
+
+        public int NextSessionFileIndex { get; set; }
+        public string NextSessionFileExtension { get { return NextSessionFileIndex.ToString("000"); } }
+
+        public BmcMachineSettings MachineSettings {get;set;}
+
+        public BmcIdxEntry()
+        {
+            MachineSettings = new BmcMachineSettings();
+        }
+
+        public BmcIdxEntry(BinaryReader rdr) : this()
+        {
+            byte[] tmpBuf = new byte[256];
+            byte b = 0;
+            float f = 0;
+
+            var header = rdr.ReadUInt16(); //00
+            if (header != 0xAAAA) 
+                throw new Exception($".IDX read failed. Header expected 0xAAAA. Offset 0x{(rdr.BaseStream.Position-4).ToString("X2")}");
+
+            this.Index = rdr.ReadUInt16(); //02
+            int year = (int)rdr.ReadByte() + 2000;  //04
+            int month = rdr.ReadByte();  //05
+            int day = rdr.ReadByte();  //06
+
+            Timestamp = new DateTime(year, month, day, 0, 0, 0);
+
+            rdr.ReadBytes(6); //07
+
+            StartOffsetPacket = rdr.ReadUInt16(); //0D
+            StartFileIndex = rdr.ReadByte(); //0f            
+            rdr.ReadByte(); //10
+            NextSessionOffsetPacket = rdr.ReadUInt16(); //11
+            NextSessionFileIndex = rdr.ReadByte(); //13
+            rdr.ReadByte(); //14
+
+            HasValidNextSession = NextSessionFileIndex != 0xFF;                 
+
+            rdr.ReadBytes(0x12b); //15
+
+            f = (float)rdr.ReadByte() / 2.0f; //140
+            MachineSettings.APAP_IntialP = MachineSettings.CPAP_InitialP = MachineSettings.S_InitialEPAP = MachineSettings.AutoS_InitialEPAP = f;
+            
+            f = (float)rdr.ReadByte() / 2.0f; //141
+            MachineSettings.CPAP_TreatP = MachineSettings.APAP_MinAPAP = MachineSettings.S_EPAP = MachineSettings.AutoS_MinEPAP = f;
+
+            MachineSettings.RampTimeMinutes = rdr.ReadByte(); //142
+            rdr.ReadByte(); //143
+            
+            MachineSettings.CPAP_ManualP = (float)rdr.ReadByte() / 2.0f; //144            
+            
+            b = rdr.ReadByte(); //145
+            MachineSettings.S_BackupRR = (b & 0x80) != 0;
+            
+            MachineSettings.HumidifierLevel = rdr.ReadByte(); //146
+            
+            b = rdr.ReadByte(); //147
+            MachineSettings.LeakAlert = (b & 0x40) != 0;
+            MachineSettings.AutoOff = (b & 0x02) != 0;
+            MachineSettings.AutoOn = (b & 0x01) != 0;
+
+
+            b = rdr.ReadByte(); //148
+            MachineSettings.Reslex = b & 0x3;
+            f = (float)(b >> 2) / 2.0f;
+            MachineSettings.S_IPAP = MachineSettings.S_EPAP + f;
+            MachineSettings.AutoS_MinIPAP = MachineSettings.AutoS_MinEPAP + f;
+
+            b = rdr.ReadByte(); //149
+            MachineSettings.AutoS_ISENS = MachineSettings.S_ISENS = 1 + (b & 0x07);
+            MachineSettings.AutoS_ESENS = MachineSettings.S_ESENS = 1 + ((b >> 3) & 0x07);
+
+            rdr.ReadBytes(2); //14a
+            
+            f = (float)rdr.ReadByte() / 2.0f; //14c            
+            MachineSettings.APAP_MaxAPAP = MachineSettings.AutoS_MaxIPAP = f;
+            
+            b = rdr.ReadByte(); //14d
+            MachineSettings.Mode = (BmcMachineSettings.BmcMode)(b >> 4);
+            MachineSettings.APAP_Sensitivity = b & 0x0f;
+
+            b = rdr.ReadByte(); //14e
+
+            b = rdr.ReadByte(); //14f
+            MachineSettings.AutoS_RiseTime = MachineSettings.S_RiseTime = 1 + (b >> 6);
+
+            b = rdr.ReadByte(); //150            
+
+            MachineSettings.ReslexPatient = (rdr.ReadByte() & 0x80) != 0; //151
+
+            b = rdr.ReadByte(); //152
+            MachineSettings.S_TiMin = (float)b / 10.0f;
+
+            b = rdr.ReadByte(); //153            
+            MachineSettings.S_TiMax = (float)b / 10.0f;
+
+            rdr.ReadBytes(0x0c); //154
+            
+            MachineSettings.MaskType = (BmcMachineSettings.BmcMaskType)rdr.ReadByte(); //160
+            
+            rdr.ReadByte(); //161            
+            
+            MachineSettings.AirTubeType = (BmcMachineSettings.BmcAirTubeType)rdr.ReadByte(); //162
+            
+            rdr.ReadByte(); //163
+            
+            MachineSettings.HeatedTubeLevel = rdr.ReadByte(); // 164
+
+            b = rdr.ReadByte(); //165
+            MachineSettings.APAP_SmartA = (b & 0x02) != 0;
+            MachineSettings.CPAP_SmartC = (b & 0x01) != 0;
+            MachineSettings.AutoS_SmartB = (b & 0x04) != 0;
+
+            rdr.ReadBytes(0x9a); //166 - 200
+        }
+
+    }
+    
+
+    public class BmcMachineSettings
+    {
+        public enum BmcMode
+        {
+            CPAP = 0,
+            AutoCPAP,
+            S,
+            ST,
+            T,
+            Titration,
+            AutoS
+        }
+
+        public enum BmcMaskType
+        {
+            FullFace = 0,
+            Nasal,
+            NasalPillow,
+            Other
+        }
+
+        public enum BmcAirTubeType
+        {
+            Unheated22mm = 0,
+            Unheated15mm,
+            Heated22mm,
+            Unheadted15mm
+        }
+
+
+
+        public int Reslex { get; set; }
+        public bool ReslexPatient { get; set; }
+
+
+        public int RampTimeMinutes { get; set; }
+        
+
+        public int HumidifierLevel { get; set; }
+        public string HumidifierLevelString { get
+            {
+                return HumidifierLevel switch
+                {
+                    0 => "Off",
+                    (> 0) and (< 6) => HumidifierLevel.ToString(),
+                    6 => "Auto",
+                    _ => "Unknown"
+                };
+            } 
+        }
+
+
+        
+        public float APAP_IntialP { get; set; }
+        public float APAP_MinAPAP { get; set; }
+        public float APAP_MaxAPAP { get; set; }
+        public int APAP_Sensitivity { get; set; }
+        public bool APAP_SmartA { get; set; }
+
+
+        public float CPAP_InitialP { get; set; }
+        public float CPAP_TreatP { get; set; }
+        public float CPAP_ManualP { get; set; }
+        public bool CPAP_SmartC { get; set; }
+
+        
+        public float S_InitialEPAP { get; set; }
+        public float S_EPAP { get; set; }
+        public float S_IPAP{ get; set; }
+        public int S_ISENS { get; set; }
+        public float S_ESENS { get; set; }
+        public int S_RiseTime{ get; set; }
+        public float S_TiMin { get; set; }
+        public float S_TiMax { get; set; }
+        public bool S_BackupRR { get; set; }
+        
+        public float AutoS_InitialEPAP { get; set; }
+        public float AutoS_MinEPAP { get; set; }
+        public float AutoS_MinIPAP { get; set; }
+        public float AutoS_MaxIPAP { get; set; }
+
+        public int AutoS_ISENS { get; set; }
+        public float AutoS_ESENS { get; set; }
+        public int AutoS_RiseTime { get; set; }
+
+        public bool AutoS_SmartB { get; set; }
+
+
+
+        public bool LeakAlert { get; set; }
+        public bool AutoOn { get; set; }
+        public bool AutoOff { get; set; }
+
+        [JsonConverter(typeof(StringEnumConverter))]
+        public BmcMode Mode { get; set; }
+
+        [JsonConverter(typeof(StringEnumConverter))]
+        public BmcMaskType MaskType { get; set; }
+        [JsonConverter(typeof(StringEnumConverter))]
+        public BmcAirTubeType AirTubeType { get; set; }
+        public int HeatedTubeLevel { get; set; }
+
+        public string HeatedTubeLevelString { get 
+            {
+                return HeatedTubeLevel switch
+                {
+                    0 => "Off",
+                    (> 0) and (< 6) => HeatedTubeLevel.ToString(),
+                    6 => "Auto",
+                    _ => "Unknown"
+                };
+            } 
+        }
+
+        
+        
+    }
+
+
+    public class BmcUsrIdxLink
+    {
+        public BmcIdxEntry IdxEntry { get; set; }
+        public BmcUsrSession UsrSession { get; set; }
+
+        public BmcMachineSettings MachineSettings { get; set; }
+
+    }
+
+    public class BmcSession
+    {
+        public DateTime Date { get; set; }
+        public List<BmcWaveformPacket> Waveforms { get; set; }
+        public List<BmcRespiratoryEvent> RespiratoryEvents { get; set; }
+        public BmcMachineSettings MachineSettings { get; set; }
+
+        public BmcSession()
+        {
+            Waveforms = new List<BmcWaveformPacket>();
+            RespiratoryEvents = new List<BmcRespiratoryEvent>();
+            MachineSettings = new BmcMachineSettings();
+        }
+    }
+
+    public class BmcMachineInfo
+    {
+        public string SerialNumber { get; set; }
+        public string Model { get; set; }
+    }
+
+    public static class ClassExtensions
+    {
+        public static string ReadNullTerminatedString(this System.IO.BinaryReader stream)
+        {
+            string str = "";
+            char ch;
+            while ((int)(ch = stream.ReadChar()) != 0)
+                str = str + ch;
+            return str;
+        }
+    }
+
 }
 
 
