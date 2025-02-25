@@ -42,4 +42,28 @@ A 1hz waveform with very little variation. Raw values range from 1922 to 1944. I
 
 ![](images/plot-unknown3.png)
 
-More to follow soon
+#### PAP Link
+PAP Link PC provides XML internationalization language files. In the English language file, there is a list of all the possible charts. Note that some devices may show different charts, e.g. a BMC polysomnograph device would show snoring where as an xPAP device would probably not. 
+```
+	<item key="detail_chart_press_setup">Pressure Trend</item>
+	<item key="detail_chart_press_epap">EPAP</item>
+	<item key="detail_chart_press_ipap">IPAP</item>
+	<item key="detail_chart_press_monitor">Pressure Wave</item>
+	<item key="detail_chart_flow">Flow</item>
+	<item key="detail_chart_insp_trigger_anomaly">Abnormal of inspiratory trigger</item>
+	<item key="detail_chart_res_event">Respiratory Events</item>
+	<item key="detail_chart_res_event_osa">OSA</item>
+	<item key="detail_chart_res_event_csa">CSA</item>
+	<item key="detail_chart_res_event_hyp">HYP</item>
+	<item key="detail_chart_res_event_snore">Snore</item>
+	<item key="detail_chart_tidal_volume_monitor">Monitored Tidal Volume</item>
+	<item key="detail_chart_minute_ventilation">Minute Ventilation</item>
+	<item key="detail_chart_insp_time">Inspiration Time</item>
+	<item key="detail_chart_exp_insp_ratio">I/E Ratio</item>
+	<item key="detail_chart_exp_insp_ratio_insp">Ins</item>
+	<item key="detail_chart_exp_insp_ratio_exp">Exp</item>
+	<item key="detail_chart_res_rate">Respiratory Rate</item>
+	<item key="detail_chart_spo2">SpO2</item>
+	<item key="detail_chart_pulse_rate">Pulse Rate</item>
+	<item key="detail_chart_leak">Leak</item>
+```
