@@ -17,12 +17,6 @@ My goal with this repository is to
 - Document everything I discover as I start deciphering BMC's SD Card data 
 - Hopefully reach a point where enough of the data format is understood to write a machine loader plugin for OSCAR so that BMC devices can finally be supported.
 
-What I have determined so far is that the BMC stores a LOT of data, especially waveform data. Unlike ResMed, the data is purely binary and therefore doesn't leave a lot of clues. 
-
-I haven't quite figured out which waveform is which, but there is a lot of data to sift through. See the link above the session vizualizer to see what I mean. 
-
-Half of the waveforms have empty data on my SD card but these could very well represent data from machine add-ons I don't have such as oximetry data, or perhaps data that only a BiPAP machine would create. Likely the data format used across the BMC range of machines are all the same.
-
 ### Why OSCAR?
 OSCAR is used by patients and professionals alike and therefore has a very big audience. The BMC machine only provides the end user with a QR Code at the end of session that can be scanned into a mobile app called "PAP Link". PAP Link provides the bare minimum of information (well, as much as you can encode in a 2D barcode, I suppose) with no waveforms of any kind. 
 There is a PC app they make called PAP Link PC which can read the data from the SD card, but the app is not officially available to end users. When I used to open my SD Card, the data was still minimal, with waveforms only for pressure, events, flow and leak. 
@@ -44,7 +38,7 @@ All data is in binary format.
 |24C36003.USR|This is almost the main file. It contains information about the machine, it's settings and a list of sessions that it recorded|
 |24C36003.log|This file grows with use over time, but the entries in it seem to be related to the machine itself (e.g. power event, start therapy, user configuration change etc.) I won't be investigating this file|
 |24C36003.evt|This file contains additional information about each session. PAP Link can happily load sessions without this file, but without this file, the machine settings for each session is missing|
-|24C36003.000|These files contain signal/waveform information. They are added at a rate of 1 packet per second during therapy. Each pakcet is 256 bytes long. Once the file reaches 65536 packets (Max of uint16)(or in file size: 65536 * 256 = 16MB). When a file reaches this size, the extension increments, e.g. .001, .002 etc. **For this reason I will be referring to this as the .nnn file henceforth** The data in this file contains information from multiple sessions, and a session could likely be split into the next .nnn file. These files are simply appended to at 1Hz and when too large a new file is created.|
+|24C36003.000|These files contain signal/waveform information. They are added at a rate of 1 packet per second during therapy. Each pakcet is 256 bytes long. Once the file reaches 65536 packets (Max of uint16)(or in file size: 65536 * 256 = 16MB). When a file reaches this size, the extension increments, e.g. .001, .002 etc. **For this reason I will be referring to this as the .nnn file henceforth** The data in this file contains information from multiple sessions, and a session could likely be split into the next .nnn file. These files are simply appended to at 1Hz and when too large a new file is created or next one is overwritten.|
 |24C36003.idx|This file contains information that links the session recorded in the USR file to which .nnn file the session waveforms start in, and at what offset in the file|
 |nP3-35.BGR|These appear to be various language translation files for the machine, so we're not going to be paying much attention to them|
 
