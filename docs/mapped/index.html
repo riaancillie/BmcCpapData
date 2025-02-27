@@ -53,7 +53,7 @@
     </style>
   </head>
   <body>
-    <h1 id="txtHeader">BMC Raw Data - Loading data...</h1>
+    <h1 id="txtHeader">BMC Data - Loading data...</h1>
 
     <div id="pnlCharts" style="width: 100%;">
 
@@ -97,7 +97,7 @@
 
 
         async function getData(url){
-            let response = await fetch(`sdcard_data/${url}.json`);
+            let response = await fetch(`../sdcard_data/${url}.json`);
             let json = await response.json();
             data = json.Packets;
             //console.log(data);            
@@ -120,99 +120,52 @@
 
             await createEventChart(json);
 
-            await createChart(data.map(itm => {return {x:  moment(itm.Timestamp).valueOf(), y: itm.IPAP*2}}), "0x04 IPAP [1Hz]", "cmH20 *2", 0);
-            await createChart(data.map(itm => {return {x:  moment(itm.Timestamp).valueOf(), y: itm.EPAP*2}}), "0x06 EPAP [1Hz]", "cmH20 *2", 0);
+            await createChart(data.map(itm => {return {x:  moment(itm.Timestamp).valueOf(), y: itm.IPAP}}), "IPAP [1Hz]", "cmH20", 0);
+            await createChart(data.map(itm => {return {x:  moment(itm.Timestamp).valueOf(), y: itm.EPAP}}), "EPAP [1Hz]", "cmH20", 0);
 
-            await createChart(mapBundledData(data, "Flow", y => y*10), "0x6c - Flow [25Hz]", "l/min * 10");
+            await createChart(mapBundledData(data, "Flow", y => y), "Flow", "LPM");
 
-            await createChart(data.map(itm => {return {x:  moment(itm.Timestamp).valueOf(), y: itm.TidalVolume}}), "0xc6 Tidal Volume [1Hz]", "ml", 0);
+            await createChart(data.map(itm => {return {x:  moment(itm.Timestamp).valueOf(), y: itm.TidalVolume % 65535 }}), "Tidal Volume", "ml", 0);
 
-            await createChart(data.map(itm => {return {x:  moment(itm.Timestamp).valueOf(), y: itm.RespirationRate}}), "0xd0 Respiration Rate [1Hz]", "BPM", 0);
+            await createChart(data.map(itm => {return {x:  moment(itm.Timestamp).valueOf(), y: itm.RespirationRate % 65535 }}), "Respiration Rate", "BPM", 0);
+            
+            
+            await createChart(mapBundledData(data, "Unknown1"), "Pressure Wave", "No Unit");
+            
+            await createChart(mapBundledData(data, "Unknown2", y => y % 65535), "Snoring", "No Unit");
 
+            await createChart(data.map(itm => {return {x:  moment(itm.Timestamp).valueOf(), y: itm.Unknown4Ints[9] / 10.0}}), "Leak", "LPM");
 
-            //await createChart(mapBundledData(data, "Unknown1", (y) => y/10), "Unknown1 [25Hz]", "cmH20");
-            await createChart(mapBundledData(data, "Unknown1"), "0x9e Pressure Wave [25Hz]", "No Unit");
-
-            //await createChart(mapBundledData(data, "Unknown1", (y) => y/6.66667), "Unknown1 mapped as Mask Pressure [25Hz]", "cmH20");
-
-            await createChart(mapBundledData(data, "Unknown2"), "0x3a - Snoring? [25Hz]", "No Unit");
-            //await createChart(mapBundledData(data, "Unknown2", (y) => remap(y, 344, 1023, 0, 10)), "Unknown 2 mapped as Snoring Score (0-10) [25Hz]", "Snore Score");
-
-
-
-            //Unknown3
-            let byteOffset = 0x9E;
-            var unknown3Series = [];
-            for (let i = 0; i < data[0].Unknown3.length; i++){
-                unknown3Series.push({
-                    name: `0x${byteOffset.toString(16)} - Unknown 3 - ${i} [1Hz]`,
-                    data: data.map(itm => {return {x:  moment(itm.Timestamp).valueOf(), y: itm.Unknown3[i]}})
-                });
-                byteOffset += 2;
-            }
-            await createChart(unknown3Series, "Unknown3", "Unknown", null, true);
-
-            /*await createChart(mapBundledData(data, "Unknown3"), "Unknown3 [10Hz]", "Unknown");
+            await createChart(data.map(itm => {return {x:  moment(itm.Timestamp).valueOf(), y: (itm.Unknown5Ints[1] % 65535) / 10}}), "Minute Ventilation", "L");
 
 
-            for (let i = 0; i < data[0].Unknown3.length; i++){
-                let title = `Unknown 3 - Offset ${i} [1Hz]`;
-                let unit = "Unknown";
-                await createChart(data.map(itm => {return {x:  moment(itm.Timestamp).valueOf(), y: itm.Unknown3[i]}}), title, unit);
-            }*/
+            ieRatioLookup = [0, 9.1, 16.7, 23.1, 28.6, 33.3, 37.5, 41.2, 44.4, 47.4, 50, 52.4, 54.5, 56.5, 58.3, 
+                60, 61.5, 63, 64.3, 65.5, 66.7, 67.7, 68.8, 69.7, 70.6, 71.4, 72.2, 73, 73.7, 74.4, 75, 75.6, 76.2, 
+                76.7, 77.3, 77.8, 78.3, 78.7, 79.2, 79.6, 80, 80.4, 80.8, 81.1, 81.5, 81.8, 82.1, 82.5, 82.8, 83.1, 
+                83.3, 83.6, 83.9, 84.1, 84.4, 84.6, 84.8, 85.1, 85.3, 85.5, 85.7, 85.9, 86.1, 86.3, 86.5, 86.7, 
+                86.8, 87, 87.2, 87.3, 87.5, 87.7, 87.8, 88, 88.1, 88.2, 88.4, 88.5, 88.6, 88.8, 88.9, 89, 89.1, 89.2, 
+                89.4, 89.5, 89.6, 89.7, 89.8, 89.9, 90, 90.1, 90.2, 90.3, 90.4, 90.5, 90.6, 90.7, 90.7, 90.8];
 
-            byteOffset = 0xB2;
-            for (let i = 0; i < data[0].Unknown4Ints.length; i++){
-                //if ([4, 7, 8].indexOf(i) < 0)//Skip these signals. They don't change
+            //let mapIeRatio = (rawValue) => { return (100 * rawValue) / (rawValue + 10) };
+            let mapIeRatio = (rawValue) => { return rawValue >= 0 && rawValue <= 100 ? ieRatioLookup[rawValue] : 0 };
+
+            ieSeries = [
                 {
-                    let title = `0x${byteOffset.toString(16)} - Unknown 4 - Offset ${i} [1Hz]`;
-                    byteOffset += 2;
-                    let unit = "Unknown";
-                    if (i == 9){ title = "0xc4 - Leak Rate [1Hz] LPM*10"; unit = "l/min * 10" }
-                    await createChart(data.map(itm => {return {x:  moment(itm.Timestamp).valueOf(), y: itm.Unknown4Ints[i]}}), title, unit);
+                    name: "Insp",
+                    data: data.map(itm => {return {x:  moment(itm.Timestamp).valueOf(), y: mapIeRatio(itm.Unknown6Ints[0])}}) 
+                },                
+            ];
 
-                    /*if (i == 0){
-                        await createChart(data.map(itm => {return {x:  moment(itm.Timestamp).valueOf(), y: itm.Unknown4Ints[i] >> 8}}), title, unit);
-                        await createChart(data.map(itm => {return {x:  moment(itm.Timestamp).valueOf(), y: itm.Unknown4Ints[i] & 0xff}}), title, unit);
-                    }*/
+            ieSeries.push({
+                name: "Exp",
+                data: ieSeries[0].data.map(itm => {return {x: itm.x, y: 100-itm.y }})
+            });  
+            
+            await createChart(ieSeries, "I/E Ratio", "%", null, true, true);
 
-                    /*if (i == 3){
-                        await createChart(data.map(itm => {return {x:  moment(itm.Timestamp).valueOf(), y: itm.Unknown4Ints[i] & 0xff}}), "Unknown 4 - Offset 3 & 0xff", unit);
-                        await createChart(data.map(itm => {return {x:  moment(itm.Timestamp).valueOf(), y: itm.Unknown4Ints[i] >> 8}}), "Unknown 4 - Offset 3 >> 8", unit);
-                    }*/
-                }
-            }
+            //await createChart(data.map(itm => {return {x:  moment(itm.Timestamp).valueOf(), y: mapIeRatio(itm.Unknown6Ints[0])}}), "I/E Ratio", "%");
 
-            byteOffset = 0xC8;
-            for (let i = 0; i < data[0].Unknown5Ints.length; i++){
-                //if ([0, 2, 3].indexOf(i) < 0) //Skip these signals. They don't change
-                    let title = `0x${byteOffset.toString(16)} - Unknown 5 - Offset ${i} [1Hz]`;
-                    let unit = "Unknown";
-
-                    if (i == 1) {title = "0xca - Minute Ventilation - l/min [1Hz]"; unit = "l/min"}
-                    await createChart(data.map(itm => {return {x:  moment(itm.Timestamp).valueOf(), y: itm.Unknown5Ints[i]}}), title, unit);
-                    byteOffset += 2;
-            }
-
-            byteOffset = 0xD2;
-            for (let i = 0; i < data[0].Unknown6Ints.length; i++){
-                //if ([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15].indexOf(i) < 0) //Skip these signals. They don't change
-                {
-                    var title =`0x${byteOffset.toString(16)} - Unknown 6 - Offset ${i} [1Hz]`
-                    var unit = "Unknown";
-
-                    if (i==0){ title = "I/E Ratio [1Hz]"; unit = "Unmapped"}
-                    await createChart(data.map(itm => {return {x:  moment(itm.Timestamp).valueOf(), y: itm.Unknown6Ints[i]}}), title, unit);
-                    byteOffset += 2;
-                }
-            }
-
-            //await createChart(data.map(itm => {return {x:  moment(itm.Timestamp).valueOf(), y: itm.Reslex}}), "Reslex [1Hz]", "Reslex", 0);
-
-            //await createChart(data.map(itm => {return {x:  moment(itm.Timestamp).valueOf(), y: itm.Terminator}}), "Terminator [1Hz]", "Terminator", 0);
-
-            $("#txtHeader").text("BMC Raw Data - "+json.Name);
-
+            $("#txtHeader").text("BMC Data - "+json.Name);
         }
 
         function createMachineSettingsTable(json){
@@ -224,6 +177,7 @@
             }
         }
 
+        
         async function createEventChart(data){
             let datasetHYP = [];
             let datasetCSA = [];
@@ -330,7 +284,7 @@
                         },
                         y: {
                             title: {text :"Event", display: true},
-                            suggestedMin: 0,
+                            suggestedMin: 0,                            
                         }
                     },
                     plugins: {
@@ -348,10 +302,10 @@
 
         function delay(ms){return new Promise(res => {setTimeout(() => {res()}, ms)})}
 
-        async function createChart(chartData, name, unitText, suggestedMin, multipleDatasets){
+        async function createChart(chartData, name, unitText, suggestedMin, multipleDatasets, stacked){
             await delay(1);
             console.log(`BMC Data - Creating chart for ${name}`)
-            $("#txtHeader").text(`BMC Data - Creating chart for ${name}`);            
+            $("#txtHeader").text(`BMC Data - Creating chart for ${name}`);
 
             let newDom = $(`<div class="chartRow"><div class="rowHandle"><i class="fa-solid fa-up-down-left-right btnPan"></i> <i class="fa fa-trash btnDelete" aria-hidden="true"></i></div><canvas style="width: 100%; height: 150px"></canvas></div>`);
             $("#pnlCharts").append(newDom);
@@ -377,7 +331,8 @@
                         radius: 0,
                         lineTension: 0,
                         backgroundColor: colors[colorIndex % colors.length],
-                        borderColor: colors[colorIndex++ % colors.length]
+                        borderColor: colors[colorIndex++ % colors.length],
+                        fill: stacked ?? False,
                     })
                 }
             }else{
@@ -388,7 +343,7 @@
                     radius: 0,
                     lineTension: 0,
                     backgroundColor: colors[colorIndex % colors.length],
-                    borderColor: colors[colorIndex++ % colors.length]
+                    borderColor: colors[colorIndex++ % colors.length]                    
                 }]
             }
 
@@ -402,6 +357,7 @@
                 options: {
                     parsing: false,
                     animation: false,
+                    spanGaps: 60 * 1000,
                     interaction:{
                         mode: "nearest",
                         axis: "x",
@@ -418,6 +374,7 @@
                         y: {
                             title: {text :unitText, display: true},
                             suggestedMin: suggestedMin,
+                            stacked: stacked ?? false,
                         }
                     },
                     plugins: {

@@ -13,9 +13,9 @@ The structure of each packet is as follows:
 |`0x0002`|`uint16`|Session Number?|Possibly session number in `.IDX` file |
 |`0x0004`|`uint16`|IPAP|IPAP Value in cmH20 *2 |
 |`0x0006`|`uint16`|EPAP|EPAP Value in cmH20 *2 |
-|`0x0008`|`uint16[25]`|Unknown1|25x uint16 value representing some measurement at 25Hz |
-|`0x003A`|`uint16[25]`|Unknown2|25x uint16 values representing some measurement at 25Hz |
-|`0x006C`|`uint16[25]`|Flow|25x uint16 values representing flow measurement at 25Hz |
+|`0x0008`|`uint16[25]`|Pressure Wave|25x uint16 value representing pressure wave at 25Hz |
+|`0x003A`|`uint16[25]`|Snoring?|25x uint16 values representing some measurement at 25Hz, most likely snoring. See below|
+|`0x006C`|`uint16[25]`|Flow|25x uint16 values representing flow measurement *10 at 25Hz |
 |`0x009E`|`uint16`|Unknown 3 Offset 0|uint16 value representing some measurement at 1Hz |
 |`0x00A0`|`uint16`|Unknown 3 Offset 1|uint16 value representing some measurement at 1Hz |
 |`0x00A2`|`uint16`|Unknown 3 Offset 2|uint16 value representing some measurement at 1Hz |
@@ -35,14 +35,14 @@ The structure of each packet is as follows:
 |`0x00BE`|`uint16`|Unknown 4 Offset 6|uint16 value representing some measurement at 1Hz |
 |`0x00C0`|`uint16`|Unknown 4 Offset 7|uint16 value representing some measurement at 1Hz |
 |`0x00C2`|`uint16`|Unknown 4 Offset 8|uint16 value representing some measurement at 1Hz |
-|`0x00C4`|`uint16`|Unknown 4 Offset 9|uint16 value representing some measurement at 1Hz |
+|`0x00C4`|`uint16`|Leak|uint16 value representing leak in liter/minute * 10 |
 |`0x00C6`|`uint16`|Tidal Volume|uint16 value representing tidal volume at 1Hz |
 |`0x00C8`|`uint16`|Unknown 5 Offset 0|uint16 value representing some measurement at 1Hz |
-|`0x00CA`|`uint16`|Unknown 5 Offset 1|uint16 value representing some measurement at 1Hz |
+|`0x00CA`|`uint16`|Minute Ventilation|uint16 value representing minute ventilation * 10 in liter/min at 1Hz |
 |`0x00CC`|`uint16`|Unknown 5 Offset 2|uint16 value representing some measurement at 1Hz |
 |`0x00CE`|`uint16`|Unknown 5 Offset 3|uint16 value representing some measurement at 1Hz |
-|`0x00D0`|`uint16`|Respiration Rate|uint16 value representing respiration rate at 1Hz |
-|`0x00D2`|`uint16`|Unknown 6 Offset 0|uint16 value representing some measurement at 1Hz |
+|`0x00D0`|`uint16`|Respiratory Rate|uint16 value representing respiration rate at 1Hz |
+|`0x00D2`|`uint16`|I/E Ratio|uint16 value representing inspiration/expiration ratio. The value is exponential/fractional. See [waveforms](0c-waveforms.md) |
 |`0x00D4`|`uint16`|Unknown 6 Offset 1|uint16 value representing some measurement at 1Hz |
 |`0x00D6`|`uint16`|Unknown 6 Offset 2|uint16 value representing some measurement at 1Hz |
 |`0x00D8`|`uint16`|Unknown 6 Offset 3|uint16 value representing some measurement at 1Hz |
