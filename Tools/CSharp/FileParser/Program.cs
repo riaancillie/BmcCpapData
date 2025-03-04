@@ -25,6 +25,7 @@ namespace BmcCpapFileParser
             //var pathusr = @"T:\CPAP\Other\Cheri\20401493.USR";
             //var pathusr = @"T:\CPAP\Other\Matt\23212180.USR";
             //var pathusr = @"T:\CPAP\Other\Techguy\22611230.USR";
+            //var pathusr = @"T:\CPAP\Other\psychotech\21102288.USR";
             var pathusr = @"T:\CPAP\Other\bipap\22A15007.USR";
             var startTime = DateTime.Parse("2024/09/22 12:00:00");
             var endTime = DateTime.Parse("2024/09/23 11:59:00");
