@@ -370,9 +370,9 @@ async function makeWaveformCharts(data){
 
     channelCodes = channelCodes.filter(x => pressureCharts.indexOf(x) < 0);
 
-    /*for (let channelCode of channelCodes){
+    for (let channelCode of channelCodes){
         await createChartForChannel(sessions, channelCode);
-    }*/
+    }
 
 
     for (var i = 0; i < graphs.length; i++) {
