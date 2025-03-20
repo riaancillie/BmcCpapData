@@ -1,0 +1,125 @@
+:root {
+    --text-color: #75868f;    
+    --table-border-color: #ffffff80;
+    --table-border-color-light: #ffffff40;
+
+    --ahi-chart-width: 250px;
+    --ahi-chart-height: 250px;
+}
+
+body.light-background{
+    --text-color: rgb(117, 134, 143);    
+    background-color: #edf1f6;        
+    color: var(--text-color);
+    --table-border-color: #d6dbf5;
+}
+
+body.bg-forest{
+    --text-color: white;    
+    background-color: rgb(13, 43, 45);
+    background-image: url('../images/bg_forest.png');
+    background-repeat: no-repeat;
+    background-size: cover;
+    color: var(--text-color);
+}
+
+
+body {
+    font-family: "Poppins", sans-serif;  
+    padding: 0px 0px 0px 0px;  
+    margin: 0px 0px 0px 0px;
+}
+
+body > .page-header{
+    display: flex;
+    align-items: center;
+    background-color: #24447f;
+    padding: 5px 10px;
+    color: white;
+}
+
+#pnlLoading {
+    position: fixed; 
+    top: 0px; 
+    left: 0px; 
+    right: 0px; 
+    bottom: 0px; 
+    backdrop-filter: 
+    blur(10px); 
+    background-color: #00000080;
+    display: flex;
+    justify-content: space-around;    
+    align-items: center;
+}
+
+#pnlAHI {
+    position: absolute; 
+    left:0px; 
+    top: 0px; 
+    width: var(--ahi-chart-width);
+    height: var(--ahi-chart-height);
+    display: flex;     
+    justify-content: center; 
+    align-items: center;    
+}
+
+#lblAHI{
+    background-color: white; 
+    color: #444;
+    border-radius: 200px; 
+    width: 85px; 
+    height: 85px;
+    display: flex;     
+    flex-direction: column;
+    justify-content: center; 
+    align-items: center;    
+}
+
+#chtAHI{
+    min-width: var(--ahi-chart-width);
+    width: var(--ahi-chart-width);
+    height: var(--ahi-chart-height);
+}
+
+div.flex-row {
+    margin: 20px 20px;    
+    display: flex;
+    justify-content: space-between;
+    column-gap: 25px;
+    row-gap: 25px;
+    margin-bottom:25px;
+    flex-wrap: wrap;
+}
+
+div.flexbox{
+    border-radius: 10px;
+    background-color: #ffffff;    
+    flex-grow: 1;
+    min-width: 500px;
+    padding: 20px 20px;
+    box-shadow: 0 1rem 1rem -0.75rem rgba(27,23,65, 0.25);
+
+}
+
+table.tbl{
+    width: 100%;    
+    border-collapse: collapse;
+}
+table.tbl td{
+    border-top: var(--table-border-color) solid 1px;
+    border-bottom: var(--table-border-color) solid 1px;    
+}
+
+table.tbl.table-striped-light td{
+    border-top: var(--table-border-color-light) solid 1px;
+    border-bottom: var(--table-border-color-light) solid 1px;    
+}
+
+.graph-container{
+    width: 100%;
+    height: 200px;
+}
+
+.canvasjs-chart-credit{
+    display: none;
+}

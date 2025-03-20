@@ -14,7 +14,7 @@ The structure of each packet is as follows:
 |`0x0004`|`uint16`|IPAP|IPAP Value in cmH20 *2 |
 |`0x0006`|`uint16`|EPAP|EPAP Value in cmH20 *2 |
 |`0x0008`|`uint16[25]`|Pressure Wave|25x uint16 value representing pressure wave at 25Hz |
-|`0x003A`|`uint16[25]`|Snoring?|25x uint16 values representing some measurement at 25Hz, most likely snoring. See below|
+|`0x003A`|`uint16[25]`|Flow Abnormality?|25x uint16 values representing inspiration abnormality 25Hz. See below|
 |`0x006C`|`uint16[25]`|Flow|25x uint16 values representing flow measurement *10 at 25Hz |
 |`0x009E`|`uint16`|Unknown 3 Offset 0|uint16 value representing some measurement at 1Hz |
 |`0x00A0`|`uint16`|Unknown 3 Offset 1|uint16 value representing some measurement at 1Hz |

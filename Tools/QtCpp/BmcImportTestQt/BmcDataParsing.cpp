@@ -379,14 +379,14 @@ BmcWaveformPacket::BmcWaveformPacket(char* buffer)
     this->Timestamp = QDateTime(QDate(packetStruct->Year, packetStruct->Month, packetStruct->Day), QTime(packetStruct->Hour, packetStruct->Minute, packetStruct->Second));
 }
 
-QString BmcData::ChangeFileExtension(QString path, QString newExtensionWithDot)
+QString BmcData::ChangeFileExtension(QString& path, QString newExtensionWithDot)
 {
     QFileInfo finfo(path);
     QString newName = finfo.path() + QDir::separator() + finfo.completeBaseName() + newExtensionWithDot;
     return newName;
 }
 
-QString BmcData::GetUsrFilePath(QString path)
+QString BmcData::GetUsrFilePath(QString& path)
 {
     QDir dir(path);
     QStringList nameFilters;
@@ -403,7 +403,7 @@ QString BmcData::GetUsrFilePath(QString path)
     }
 }
 
-bool BmcData::DirectoryHasBmcData(QString path)
+bool BmcData::DirectoryHasBmcData(QString& path)
 {
     QDir dir(path);
     if (!dir.exists(path))
@@ -433,7 +433,7 @@ bool BmcData::DirectoryHasBmcData(QString path)
 
 BmcData::BmcData() { }
 
-BmcData::BmcData(QString path) : BmcData()
+BmcData::BmcData(QString& path) : BmcData()
 {
     if (!path.endsWith(QDir::separator()))
         path.append(QDir::separator());
@@ -513,7 +513,7 @@ void BmcData::ReadAllSessions()
 
 }
 
-QDateTime BmcData::ReadWaveformPacketTimestamp(QString path, quint16 packetOffset)
+QDateTime BmcData::ReadWaveformPacketTimestamp(QString& path, quint16 packetOffset)
 {
     quint64 byteOffset = (packetOffset * 0x100) + 0xf8;
 
@@ -647,6 +647,22 @@ void BmcData::FindValidSessions()
 
 }
 
+int BmcData::ReadDataCount()
+{
+    QFile file(this->usrFilePath);
+    file.open(QIODevice::ReadOnly);
+
+    file.seek(0x102338);  //Packets start at offset 0x800
+
+    char countBuf[2];
+    file.read(countBuf,2);
+
+    file.close();
+
+    uint16_t* count = (uint16_t*)countBuf;
+    return *count;
+}
+
 void BmcData::ReadData()
 {
     this->ReadIdxFile();
@@ -655,7 +671,7 @@ void BmcData::ReadData()
     this->FindValidSessions();
 }
 
-QList<BmcWaveformPacket> BmcData::ReadWaveforms(BmcDataLink link)
+QList<BmcWaveformPacket> BmcData::ReadWaveforms(BmcDataLink& link)
 {
     QList<BmcWaveformPacket> waveforms;
 

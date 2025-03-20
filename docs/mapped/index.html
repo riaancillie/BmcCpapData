@@ -105,7 +105,7 @@
             let mapBundledData = (data, keyName, yValFunc) => {
                 let result = [];
                 for (let packet of data){
-                    let startTime = moment(packet.Timestamp);
+                    let startTime = moment(packet.Timestamp); 
                     let period = 1000 / packet[keyName].length;
                     for (let val of packet[keyName]){
                         result.push({x: startTime, y: yValFunc ? yValFunc(val) : val});
@@ -116,6 +116,12 @@
             };
 
             createMachineSettingsTable(json);
+
+            let realFlow = data.map(x => { return {
+                Timestamp: x.Timestamp, 
+                //RealFlow: x.Flow.map(y => y - (x.Unknown4Ints[9]) )
+                RealFlow: x.Flow.map((y, idx) => y - /*(x.Unknown1[idx]*/  ( x.Unknown4Ints[9] *0.25) - 40) 
+            }});             
             
 
             await createEventChart(json);
@@ -123,7 +129,9 @@
             await createChart(data.map(itm => {return {x:  moment(itm.Timestamp).valueOf(), y: itm.IPAP}}), "IPAP [1Hz]", "cmH20", 0);
             await createChart(data.map(itm => {return {x:  moment(itm.Timestamp).valueOf(), y: itm.EPAP}}), "EPAP [1Hz]", "cmH20", 0);
 
-            await createChart(mapBundledData(data, "Flow", y => y), "Flow", "LPM");
+            await createChart(mapBundledData(data, "Flow", y => y), "Flow", "LPM");            
+            //await createChart(mapBundledData(data, "Flow", y => y-60), "Flow", "LPM");            
+            await createChart(mapBundledData(realFlow, "RealFlow", y => y), "RealFlow", "LPM");            
 
             await createChart(data.map(itm => {return {x:  moment(itm.Timestamp).valueOf(), y: itm.TidalVolume % 65535 }}), "Tidal Volume", "ml", 0);
 
@@ -284,13 +292,13 @@
                         },
                         y: {
                             title: {text :"Event", display: true},
-                            suggestedMin: 0,                            
+                            suggestedMin: 0,                                                      
                         }
                     },
                     plugins: {
                         decimation: { enabled: true, algorithm:  "lttb",  samples: 4000, threshold: 4000},
                         legend: { align: "start", title: {align: "start" }, labels: {font: {weight: "bold", size: 14}, boxWidth: 15} },
-                        zoom: {zoom: {wheel: {enabled: true}, mode: "x", onZoom: onChartZoom}, pan: {enabled: true, mode: "x", onPan: onChartZoom}}
+                        zoom: {zoom: {wheel: {enabled: true}, mode: "x", onZoom: onChartZoom}, pan: {enabled: true, mode: "x", onPan: onChartZoom}},
                     },
 
                 }
@@ -375,6 +383,9 @@
                             title: {text :unitText, display: true},
                             suggestedMin: suggestedMin,
                             stacked: stacked ?? false,
+                            grid: {
+                                color: ({tick}) => tick.value == 0 ? "#ff0000" : Chart.defaults.borderColor
+                            }  
                         }
                     },
                     plugins: {

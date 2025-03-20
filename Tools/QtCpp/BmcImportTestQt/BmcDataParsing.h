@@ -140,7 +140,7 @@ enum BmcAirTubeType
     Unheated22mm = 0,
     Unheated15mm,
     Heated22mm,
-    Unheadted15mm
+    Heated15mm
 };
 
 class BmcMachineSettings
@@ -336,14 +336,16 @@ public:
 
     QList<BmcWaveformCrumb> WaveformCrumbs;
 
-    static bool DirectoryHasBmcData(QString path);
+    static bool DirectoryHasBmcData(const QString& path);
 
     BmcData();
-    BmcData(QString path);
+    BmcData(QString& path);
 
+    int ReadDataCount();
     void ReadData();
 
     BmcMachineInfo ReadMachineInfo();
+    
     BmcDateSession ReadSession(QDate aDate);
 
 
@@ -352,15 +354,15 @@ protected:
     QString dirPath;
     QString usrFilePath;
 
-    static QString ChangeFileExtension(QString path, QString newExtensionWithDot);
-    static QString GetUsrFilePath(QString path);
+    static QString ChangeFileExtension(QString& path, QString newExtensionWithDot);
+    static QString GetUsrFilePath(QString& path);
 
-    QDateTime ReadWaveformPacketTimestamp(QString path, quint16 packetOffset);
+    QDateTime ReadWaveformPacketTimestamp(QString& path, quint16 packetOffset);
 
     void ReadIdxFile();
     void ReadAllSessions();
     void BuildWaveformCrumbs();
-    QList<BmcWaveformPacket> ReadWaveforms(BmcDataLink link);
+    QList<BmcWaveformPacket> ReadWaveforms(BmcDataLink & link);
     void FindValidSessions();
 };
 

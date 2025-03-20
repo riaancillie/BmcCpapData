@@ -34,15 +34,19 @@ int main(int argc, char *argv[])
         throw std::invalid_argument("Path does not contain BMC data.");
 
     BmcData data(path);
+    auto dataCount = data.ReadDataCount();
+    qout << "Data Count: " << dataCount << "\n";
+    qout.flush();
     data.ReadData();
-    auto session = data.ReadSession(QDate(2024, 07, 04));
+    //auto session = data.ReadSession(QDate(2024, 07, 04));
 
 
 
 
-    qout << data.AllUsrSessions.length();
+    qout << data.AllUsrSessions.length() << "\n";
+    qout.flush();
 
-    QFile file("T:\\CPAP\\BMC G3 SD Card\\2025-02-21\\24C36003.idx");
+/*    QFile file("T:\\CPAP\\BMC G3 SD Card\\2025-02-21\\24C36003.idx");
     file.open(QIODevice::ReadOnly);
 
     QDataStream strm(&file);
@@ -110,5 +114,5 @@ int main(int argc, char *argv[])
 
     fileUSR.close();
 
-
+*/
 }

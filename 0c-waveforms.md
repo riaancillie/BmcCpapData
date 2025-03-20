@@ -87,7 +87,7 @@ Considering that we will be mapping thousands of raw values to percentages with 
 
 ### Other Waveforms
 
-#### Offset `0x003A` - 25Hz - Snoring
+#### Offset `0x003A` - 25Hz - Inspiration/Flow Abnormality
 This waveform is not displayed in PAP Link.
 The waveform appears to be related to flow and does not follow pressure changes. It might be either flow limitations or snoring. 
 When inspecting the raw data over several sessions, it appears the lower limit of the raw value ranges between sessions but is generally between 344 and 346. The highest value recorded is consistently 1023 across all sessions. 
