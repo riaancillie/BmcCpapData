@@ -190,8 +190,8 @@
                     moment.locale(locale);
                     restoreSettings();
                     //await loadData("https://riaancillie.blob.core.windows.net/test/data.json.gz");
-                    //await loadData("data.json.gz");
-                    await loadData("2025-01-24.json.gz");
+                    await loadData("data.json.gz");
+                    //await loadData("2025-01-24.json.gz");
 
                     const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
                     const tooltipList = [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl));

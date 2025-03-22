@@ -60,6 +60,8 @@ var unknownColorIndex = 0;
 let tmrWindowResize = 0;
 let tmrPan = 0;
 let graphMode = "Pan";
+let lastViewportMin = null;
+let lastViewportMax = null;
 
 function setDateFormat(formatStr){
     dateFormat = formatStr;
@@ -215,8 +217,11 @@ function displayChannelList(data){
             let graph = graphs.find(g => g.channelCodes.indexOf(channel.Code) >= 0);
             if (graph){
                 $(graph.container).toggleClass("hidden", !chShow.Visible);
+                graph.chart.options.x_visible = chShow.Visible;
+                graph.chart.options.axisX.viewportMinimum = lastViewportMin;
+                graph.chart.options.axisX.viewportMaximum = lastViewportMax;
                 graph.chart.render();
-            } 
+            }
 
          });
 
@@ -634,7 +639,7 @@ async function overlayFlowRespiratoryEvents(data){
         }else{
             $("#tooltipFlowEvent")
                 .css("display", "none")
-        }        
+        }
     }
 
     $(canvas).on("mousemove touchstart", mouseMoveEvent)
@@ -653,7 +658,7 @@ async function displayTimeline(data){
             timeline.stage.enableMouseOver(-1);
             timeline.stage.enableDOMEvents(false);
             timeline.stage.removeAllEventListeners();
-            timeline.stage.removeAllChildren();            
+            timeline.stage.removeAllChildren();
             timeline.stage.canvas = null;
         }catch{};
         timeline.stage = null;
@@ -729,13 +734,13 @@ async function displayTimeline(data){
     for (let flagChannel of flagChannels){
         let label = new createjs.Text(flagChannel.Label, "12px Poppins", "#000000");
         label.x = offsetLeft - label.getMeasuredWidth() - 5;
-        label.y = (idx * 25) + ((25 - label.getMeasuredHeight())/2);                
-        
+        label.y = (idx * 25) + ((25 - label.getMeasuredHeight())/2);
+
         timeline.labels.push({text: label, flagCode: flagChannel.Code});
         stage.addChild(label);
 
         label.on("click", () => {
-            //toggleFlagVisibility(flagChannel.Code);                
+            //toggleFlagVisibility(flagChannel.Code);
             console.log("toggled");
         });
 
@@ -1011,14 +1016,14 @@ async function displayTimeline(data){
         for (let label of timeline.labels){
             let b = label.text.getTransformedBounds();
             if (evt.stageX >= b.x - 10 && evt.stageX <= b.x + b.width + 20 && evt.stageY >= b.y - 5 && evt.stageY <= b.y + b.height + 10){
-                console.log(`Toggle flag ${label.flagCode}`);                
-                toggleFlagVisibility(label.flagCode);                
+                console.log(`Toggle flag ${label.flagCode}`);
+                toggleFlagVisibility(label.flagCode);
             }
         }
 
     })
 
-    stage.on("pressup", (evt) => {        
+    stage.on("pressup", (evt) => {
         //Zoom
         timeline.zoomWindow.busy = false;
         timeline.zoomWindow.shape.visible = false;
@@ -1051,7 +1056,7 @@ async function toggleFlagVisibility(flagChannelCode)
         if (!flagVis) {
             flagVis = {Code: flagChannelCode, Visible: true};
             flagVisibility.push(flagVis);
-        } 
+        }
         flagVis.Visible = !flagVis.Visible;
 
         let flagLabel = timeline.labels.find(l => l.flagCode == flagChannelCode);
@@ -1101,7 +1106,7 @@ function setZoomRange(dtStart, dtEnd){
     graphs.forEach(g => {
         g.chart.options.axisX.viewportMinimum = dtStart;
         g.chart.options.axisX.viewportMaximum = dtEnd;
-        g.chart.render();    
+        g.chart.render();
     });
     onUpdateZoomRange();
 }
@@ -1263,7 +1268,8 @@ async function createChartForChannel(sessions, channelCodes, options) {
             titleFontFamily: 'Poppins',
             labelFontFamily: 'Poppins',
             gridColor: "#DDDDDD",
-            titleFontSize: 20
+            titleFontSize: 20,
+            labelFontSize: 11
         },
         axisY: {
             title: options.forceTitle ??  channel.Name,
@@ -1272,6 +1278,7 @@ async function createChartForChannel(sessions, channelCodes, options) {
             labelFontColor: "#ffffff",*/
             titleFontFamily: 'Poppins',
             labelFontFamily: 'Poppins',
+            labelFontSize: 11,            
             //labelMaxWidth: 200,
             //labelAutoFit: false,
             //labelWrap: true,
@@ -1292,6 +1299,7 @@ async function createChartForChannel(sessions, channelCodes, options) {
 
     let chartOptions = {...chartDefaultOptions, ...options.additionalChartOptions}
 
+    chartOptions.x_visible = options.visible;
 
     let chart = new CanvasJS.Chart($(chartContainer)[0], chartOptions);
     chart.render();
@@ -1318,14 +1326,15 @@ function syncCharts(charts, syncToolTip, syncCrosshair, syncAxisXRange) {
         this.onToolTipUpdated = function (e) {
             try{
                 setTimeout(() => {
-                    for (var j = 0; j < charts.length; j++) {
+                    for (let j = 0; j < charts.length; j++) {
+                        if (!charts[j].options.x_visible) continue;
                         if (charts[j] != e.chart)
                             if (e.entries[0].xValue != null)
                                 //charts[j].toolTip.showAtX(e.entries[0].xValue); //CanvasJS just doesn't show a tooltip if there isn't a data point at exactly this timestamp
                                 charts[j].toolTip.showAtX(charts[j].axisX[0].crosshair.value); //Instead, use the crosshairs x position since it snaps to the last data point
                     }
                 }, 50);
-                
+
 
                 let timestamp = e.entries[0].xValue.getTime();
                 timeline.updateCrosshair(timestamp);
@@ -1340,6 +1349,7 @@ function syncCharts(charts, syncToolTip, syncCrosshair, syncAxisXRange) {
     if (!this.onToolTipHidden) {
         this.onToolTipHidden = function (e) {
             for (var j = 0; j < charts.length; j++) {
+                if (!charts[j].options.x_visible) continue;
                 if (charts[j] != e.chart)
                     charts[j].toolTip.hide();
             }
@@ -1349,6 +1359,7 @@ function syncCharts(charts, syncToolTip, syncCrosshair, syncAxisXRange) {
     if (!this.onCrosshairUpdated) {
         this.onCrosshairUpdated = function (e) {
             for (var j = 0; j < charts.length; j++) {
+                if (!charts[j].options.x_visible) continue;
                 if (charts[j] != e.chart)
                     charts[j].axisX[0].crosshair.showAt(e.value);
             }
@@ -1358,6 +1369,7 @@ function syncCharts(charts, syncToolTip, syncCrosshair, syncAxisXRange) {
     if (!this.onCrosshairHidden) {
         this.onCrosshairHidden = function (e) {
             for (var j = 0; j < charts.length; j++) {
+                if (!charts[j].options.x_visible) continue;
                 if (charts[j] != e.chart)
                     charts[j].axisX[0].crosshair.hide();
             }
@@ -1366,14 +1378,18 @@ function syncCharts(charts, syncToolTip, syncCrosshair, syncAxisXRange) {
 
     if (!this.onRangeChanged) {
         this.onRangeChanged = function (e) {
+            lastViewportMin = e.axisX[0].viewportMinimum;
+            lastViewportMax = e.axisX[0].viewportMaximum;
 
             let panFn = () => {
                 for (let j = 0; j < charts.length; j++) {
+                    if (!charts[j].options.x_visible) continue;
+
                     if (e.trigger === "reset") {
                         charts[j].options.axisX.viewportMinimum = charts[j].options.axisX.viewportMaximum = null;
                         charts[j].options.axisY.viewportMinimum = charts[j].options.axisY.viewportMaximum = null;
                         charts[j].render();
-                    } else {//if (charts[j] !== e.chart) {                    
+                    } else {//if (charts[j] !== e.chart) {
                         charts[j].options.axisX.viewportMinimum = e.axisX[0].viewportMinimum;
                         charts[j].options.axisX.viewportMaximum = e.axisX[0].viewportMaximum;
                         charts[j].render();
