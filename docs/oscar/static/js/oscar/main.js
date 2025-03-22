@@ -183,6 +183,8 @@ function displayChannelList(data){
             if (PRESSURE_CHART_CODES.indexOf(channel.Code) >= 0) continue;
             if (channel.Code == "FlowRate") continue; //Do not allow flow rate to be turned off
 
+            if (allWaveformChannels.find(w => w.Code == channel.Code)) continue;
+
             allWaveformChannels.push({
                 Code: channel.Code,
                 Type: channel.Type,
@@ -1379,6 +1381,7 @@ function syncCharts(charts, syncToolTip, syncCrosshair, syncAxisXRange) {
                 }
                 onUpdateZoomRange();
                 tmrPan = 0;
+                //console.log("Range updated");
             };
 
             if (tmrPan == 0 && CHART_PAN_UPDATE_INTERVAL > 0){
