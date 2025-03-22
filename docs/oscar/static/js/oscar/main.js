@@ -17,6 +17,8 @@ const  ChannelTypeSpan = 16;
 const  ChannelTypeWaveform = 32;
 const  ChannelTypeUnknown = 64;
 
+const CHART_PAN_UPDATE_INTERVAL = 0;
+
 const AHI_CHANNELS = ["ClearAirway", "AllApnea", "Obstructive", "Hypopnea", "Apnea"];
 
 const IGNORE_CHANNELS = ["MaskPressureHi"];
@@ -56,6 +58,7 @@ let flagVisibility = [];
 
 var unknownColorIndex = 0;
 let tmrWindowResize = 0;
+let tmrPan = 0;
 let graphMode = "Pan";
 
 function setDateFormat(formatStr){
@@ -1361,18 +1364,26 @@ function syncCharts(charts, syncToolTip, syncCrosshair, syncAxisXRange) {
 
     if (!this.onRangeChanged) {
         this.onRangeChanged = function (e) {
-            for (var j = 0; j < charts.length; j++) {
-                if (e.trigger === "reset") {
-                    charts[j].options.axisX.viewportMinimum = charts[j].options.axisX.viewportMaximum = null;
-                    charts[j].options.axisY.viewportMinimum = charts[j].options.axisY.viewportMaximum = null;
-                    charts[j].render();
-                } else {//if (charts[j] !== e.chart) {
-                    charts[j].options.axisX.viewportMinimum = e.axisX[0].viewportMinimum;
-                    charts[j].options.axisX.viewportMaximum = e.axisX[0].viewportMaximum;
-                    charts[j].render();
+
+            let panFn = () => {
+                for (let j = 0; j < charts.length; j++) {
+                    if (e.trigger === "reset") {
+                        charts[j].options.axisX.viewportMinimum = charts[j].options.axisX.viewportMaximum = null;
+                        charts[j].options.axisY.viewportMinimum = charts[j].options.axisY.viewportMaximum = null;
+                        charts[j].render();
+                    } else {//if (charts[j] !== e.chart) {                    
+                        charts[j].options.axisX.viewportMinimum = e.axisX[0].viewportMinimum;
+                        charts[j].options.axisX.viewportMaximum = e.axisX[0].viewportMaximum;
+                        charts[j].render();
+                    }
                 }
-            }
-            onUpdateZoomRange();
+                onUpdateZoomRange();
+                tmrPan = 0;
+            };
+
+            if (tmrPan == 0 && CHART_PAN_UPDATE_INTERVAL > 0){
+                tmrPan = setTimeout(() => panFn, CHART_PAN_UPDATE_INTERVAL);
+            } else panFn();
         }
     }
 
