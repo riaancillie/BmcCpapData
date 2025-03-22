@@ -7,6 +7,27 @@
     --ahi-chart-height: 250px;
 }
 
+@media only screen and (max-width: 560px) {
+    .hide-xs{
+        display: none;
+    }
+
+    #flexGraphs{
+        margin: 0px -20px;
+        padding: 10px 0px;
+    }
+}
+
+@media only screen and (min-width: 560px) {
+    #pnlChannels{
+        /*max-width: 0.4vw;*/
+    }
+}
+
+.hidden{
+    display: none !important;
+}
+
 body.light-background{
     --text-color: rgb(117, 134, 143);    
     background-color: #edf1f6;        
@@ -28,6 +49,7 @@ body {
     font-family: "Poppins", sans-serif;  
     padding: 0px 0px 0px 0px;  
     margin: 0px 0px 0px 0px;
+    touch-action: manipulation;
 }
 
 body > .page-header{
@@ -95,7 +117,8 @@ div.flexbox{
     border-radius: 10px;
     background-color: #ffffff;    
     flex-grow: 1;
-    min-width: 500px;
+    /*min-width: 500px;*/
+    min-width: 25vw;
     padding: 20px 20px;
     box-shadow: 0 1rem 1rem -0.75rem rgba(27,23,65, 0.25);
 
@@ -122,4 +145,53 @@ table.tbl.table-striped-light td{
 
 .canvasjs-chart-credit{
     display: none;
+}
+
+.graph-container{
+    position: relative;
+}
+
+.chart-toolbar{
+    position: fixed;
+    right: 10px;
+    bottom: 10px;
+    opacity: 0.4;
+
+    display: flex;
+    row-gap: 10px;
+    flex-direction: column;
+}
+
+.chart-toolbar:hover{    
+    opacity: 1;
+}
+
+.chart-toolbar button{
+    padding-left: 5px;
+    padding-right: 5px;
+}
+
+.chart-toolbar label{
+    padding-left: 5px;
+    padding-right: 5px;
+}
+
+.canvasjs-chart-toolbar{
+    display: none;
+}
+
+#tooltipFlowEvent{
+    position: fixed;
+    display: none;
+    background-color: #000000A0;
+    font-size: 0.8rem;
+    color: white;
+    padding: 2px 5px;
+    border-radius: 5px;
+
+}
+
+
+#pnlChannelSelect div.channel{
+    display: flex
 }

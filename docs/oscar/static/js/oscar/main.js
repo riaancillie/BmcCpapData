@@ -7,6 +7,8 @@ let dateFormat = "YYYY/MM/DD";
 let timeFormat = "HH:mm:ss";
 let timeFormatChart = "HH:mm:ss.fff";
 
+let currentLocale = (navigator.languages && navigator.languages.length) ? navigator.languages[0] : navigator.language;
+
 const  ChannelTypeData = 1;
 const  ChannelTypeSetting = 2;
 const  ChannelTypeFlag = 4;
@@ -15,7 +17,26 @@ const  ChannelTypeSpan = 16;
 const  ChannelTypeWaveform = 32;
 const  ChannelTypeUnknown = 64;
 
-const AHI_CHANNELS = ["ClearAirway", "AllApea", "Obstructive", "Hypopnea", "Apnea"];
+const AHI_CHANNELS = ["ClearAirway", "AllApnea", "Obstructive", "Hypopnea", "Apnea"];
+
+const IGNORE_CHANNELS = ["MaskPressureHi"];
+
+let PRESSURE_CHART_CODES = ["Pressure", "EPAP", "IPAP", "IPAPLo", "IPAPHi", "EEPAP", "PressureSet", "EPAPSet", "IPAPSet"];
+
+const STATS_CHANNEL_CODES = ["Pressure", "PressureSet", "EPAP", "EPAPSet", "IPAP", "IPAPSet",
+    "PS", "PTB", "PRS1PeakFlow", "Prisma_ObstructLevel", "Prisma_PressureMeasured", "Prisma_rRMV", "Prisma_rMVFluctuation",
+    "MinuteVent", "RespRate", "RespEvent", "FLG",
+    "Leak", "LeakTotal", "Snore", "IE", "Ti", "Te", "TgMV",
+     "TidalVolume", "Pulse", "SPO2", "Inclination", "Orientation", "Motion"
+
+];
+
+//Channels visible by default
+let channelVisibility = [
+    {"Code": "FLG", Visible: true},
+    {"Code": "Leak", Visible: true},
+];
+
 const FLAG_COLORS = {
     OA: ["#8f271f", "#e03c2f"],
     H: ["#77852c", "#d4ed47"],
@@ -24,13 +45,18 @@ const FLAG_COLORS = {
     CSR: ["#421163", "#a033e8"],
 }
 
-const UnknownFlagColors = [
+const UNKNOWN_FLAG_COLORS = [
     ["#871c60", "#e31e9b"],
     ["#8f7014", "#d1a215"],
     ["#0c8710", "#1ad920"],
     ["#2c1178", "#5125cc"]
 ];
+
+let flagVisibility = [];
+
 var unknownColorIndex = 0;
+let tmrWindowResize = 0;
+let graphMode = "Pan";
 
 function setDateFormat(formatStr){
     dateFormat = formatStr;
@@ -64,6 +90,10 @@ function onUpdateDatetimeFormats(){
     })
 }
 
+function onWindowResize(){
+    displayTimeline(jsonData);
+}
+
 async function onChangeSessions()
 {
     $("#pnlLoading").show();
@@ -78,7 +108,9 @@ async function onChangeSessions()
     this.onToolTipHidden = null;
     this.onToolTipUpdated = null;
 
+    await displayChannelList(jsonData);
     await makeWaveformCharts(jsonData);
+    await overlayFlowRespiratoryEvents(jsonData);
     displayStatistics(jsonData);
     await displayTimeline(jsonData);
 
@@ -86,7 +118,20 @@ async function onChangeSessions()
 }
 
 async function getDataJson(url) {
-    let result = await fetch(url);
+    let result = null;
+
+    try{
+        result = await fetch(url);
+        if (result.ok == false)
+            throw new Error("Failed to fetch url: "+result.status);
+    }
+    catch(err){
+        console.error(`Could not fetch data from url ${url}`, err);
+        return;
+    }
+
+    if (result == null) return;
+
     let gzArrayBuf = await result.arrayBuffer();
     let gzBytes = new Uint8Array(gzArrayBuf);
     let jsonBytes = fflate.decompressSync(gzBytes);
@@ -118,6 +163,64 @@ function displaySessions(data){
     }
 }
 
+function displayChannelList(data){
+
+    allWaveformChannels = [];
+
+    for (let session of data.Sessions)
+    {
+        if (!session.Enabled) continue;
+
+        for (let channel of session.Channels)
+        {
+            if (channel.Type != ChannelTypeWaveform) continue;
+            if (IGNORE_CHANNELS.indexOf(channel.Code) >= 0) continue;
+
+            //Do not allow pressure charts to be turned off
+            if (PRESSURE_CHART_CODES.indexOf(channel.Code) >= 0) continue;
+            if (channel.Code == "FlowRate") continue; //Do not allow flow rate to be turned off
+
+            allWaveformChannels.push({
+                Code: channel.Code,
+                Type: channel.Type,
+                Label: channel.Label,
+                Name: channel.Name
+            });
+
+        }
+    }
+
+    $("#pnlChannelSelect").empty();
+    for (let channel of allWaveformChannels){
+        let chShow = channelVisibility.find(x => x.Code == channel.Code);
+        if (chShow == null) {
+            chShow = {Code: channel.Code, Visible: false};
+            channelVisibility.push(chShow);
+        }
+
+        let row = $(`<div class="channel"></div>`);
+        let cellCheck = $(`<div class="form-check form-switch"><input class="form-check-input" type="checkbox" role="switch" checked>`);
+        if (!chShow.Visible){ $("input", cellCheck).removeAttr("checked"); }
+        let cellLabel = $(`<div></div>`).text(channel.Name);
+
+        $(row).append([cellCheck, cellLabel]);
+
+        $("input", cellCheck).on("change", () => {
+            chShow.Visible = $("input", cellCheck).prop("checked");
+            let graph = graphs.find(g => g.channelCodes.indexOf(channel.Code) >= 0);
+            if (graph){
+                $(graph.container).toggleClass("hidden", !chShow.Visible);
+                graph.chart.render();
+            } 
+
+         });
+
+        $("#pnlChannelSelect").append(row);
+    }
+
+
+}
+
 function displayMachineSettings(data) {
     let machineSettings = data.Sessions[0].MachineSettings;
 
@@ -145,17 +248,10 @@ function displayStatistics(data)
 
     $("#tblStats").empty();
 
-    const statsChannels = ["Pressure", "PressureSet", "EPAP", "EPAPSet", "IPAP", "IPAPSet",
-        "PS", "PTB", "PRS1PeakFlow", "Prisma_ObstructLevel", "Prisma_PressureMeasured", "Prisma_rRMV", "Prisma_rMVFluctuation",
-        "MinuteVent", "RespRate", "RespEvent", "FLG",
-        "Leak", "LeakTotal", "Snore", "IE", "Ti", "Te", "TgMV",
-         "TidalVolume", "Pulse", "SPO2", "Inclination", "Orientation", "Motion"
-
-    ];
 
     let stats = [];
 
-    for (let statsChannelCode of statsChannels)
+    for (let statsChannelCode of STATS_CHANNEL_CODES)
     {
         let channelName = "";
         let channelUnit = "";
@@ -188,17 +284,20 @@ function displayStatistics(data)
         });
     }
 
-    console.log(stats);
+    //console.log(stats);
+
+    let formatter = new Intl.NumberFormat(currentLocale, {maximumFractionDigits: 2})
 
     for (let stat of stats) {
+
         let row = $(`<tr></tr>`);
         let cellChannel = $(`<td></td>`).text(stat.ChannelName);
-        let cellMin = $(`<td></td>`).text(stat.Min.toFixed(2));
-        let cellMed = $(`<td></td>`).text(stat.Median.toFixed(2));
-        let cell95 = $(`<td></td>`).text(stat.Percent95.toFixed(2));
-        let cell995 = $(`<td></td>`).text(stat.Percent995.toFixed(2));
-        let cellMax = $(`<td></td>`).text(stat.Max.toFixed(2));
-        let cellUnits = $(`<td></td>`).text(stat.ChannelUnit);
+        let cellMin = $(`<td></td>`).text(formatter.format(stat.Min));
+        let cellMed = $(`<td></td>`).text(formatter.format(stat.Median));
+        let cell95 = $(`<td></td>`).text(formatter.format(stat.Percent95));
+        let cell995 = $(`<td class="hide-xs"></td>`).text(formatter.format(stat.Percent995));
+        let cellMax = $(`<td></td>`).text(formatter.format(stat.Max));
+        let cellUnits = $(`<td class="hide-xs"></td>`).text(stat.ChannelUnit);
         $(row).append([cellChannel, cellMin, cellMed, cell95, cell995, cellMax, cellUnits]);
         $("#tblStats").append(row);
     }
@@ -225,6 +324,7 @@ function displayStatistics(data)
                 if (ahiChannel == null){
                     ahiChannel = {
                         Code: respType,
+                        Label: sessionChannel.Label,
                         Duration: 0,
                         Count: 0
                     }
@@ -248,8 +348,8 @@ function displayStatistics(data)
     totalAhi = 0;
     ahiChannels.forEach(x => totalAhi += x.Index);
 
-    console.log("Total sleep: ", totalSleepSeconds);
-    console.table(ahiChannels);
+    //console.log("Total sleep: ", totalSleepSeconds);
+    //console.table(ahiChannels);
 
     $("#lblAHIValue").text(totalAhi.toFixed(2));
 
@@ -257,15 +357,15 @@ function displayStatistics(data)
 
     let dataPoints = [];
     for (let ahiChannel of ahiChannels){
-        let shortCode = ahiChannel.Code;
-        switch (ahiChannel.Code)
+        let shortCode = ahiChannel.Label;
+        /*switch (ahiChannel.Code)
         {
             case "Obstructive": shortCode = "OA"; break;
             case "ClearAirway": shortCode = "CSA"; break;
             case "Hypopnea": shortCode = "H"; break;
             case "AllApnea": shortCode = "AA"; break;
             case "lApnea": shortCode = "A"; break;
-        }
+        }*/
         dataPoints.push({y: ahiChannel.Index.toFixed(2), label: ahiChannel.Code, shortCode: shortCode})
     }
 
@@ -327,7 +427,7 @@ function displayStatistics(data)
             respEvent.Index = respEvent.Count / totalSleepHours;
         }
 
-        console.table(respEvents);
+        //console.table(respEvents);
 
         $("#tblRespiratoryEvents").empty();
         for (let respEvent of respEvents) {
@@ -361,17 +461,32 @@ function getAllChannelCodes(data, channelTypeFilter){
 }
 
 async function makeWaveformCharts(data){
-
     let sessions = data.Sessions;
     let channelCodes = getAllChannelCodes(data, ChannelTypeWaveform);
 
-    let pressureCharts = ["Pressure", "EPAP", "IPAP", "IPAPLo", "IPAPHi", "EEPAP", "PressureSet", "EPAPSet", "IPAPSet"];
-    await createChartForChannel(sessions, pressureCharts, {forceTitle: "Pressure", additionalSeriesOptions: {type: "stepLine"}});
+    let removeChannelsFromList = (channels) => { channelCodes = channelCodes.filter(x => channels.indexOf(x) < 0); };
 
-    channelCodes = channelCodes.filter(x => pressureCharts.indexOf(x) < 0);
+    await createChartForChannel(sessions, PRESSURE_CHART_CODES, {forceTitle: "Pressure", additionalSeriesOptions: {type: "stepLine"}});
+    removeChannelsFromList(PRESSURE_CHART_CODES);
+
+    await createChartForChannel(sessions, ["FlowRate"], {additionalSeriesOptions: {}});
+    removeChannelsFromList(["FlowRate"]);
+
+    //Flow limit
+    await createChartForChannel(sessions, ["FLG"], {additionalSeriesOptions: {}});
+    removeChannelsFromList(["FLG"]);
 
     for (let channelCode of channelCodes){
-        await createChartForChannel(sessions, channelCode);
+        //if (graphs.length > 2) continue; //RC LIMITCHARTS
+        if (IGNORE_CHANNELS.indexOf(channelCode) >= 0) continue;
+
+        let chartVis = channelVisibility.find(x => x.Code == channelCode)
+        if (chartVis == null){
+            console.log("Unknown chart visibility");
+        }
+        let showChart = chartVis.Visible;
+
+        await createChartForChannel(sessions, channelCode, {visible: showChart});
     }
 
 
@@ -393,27 +508,154 @@ async function makeWaveformCharts(data){
     var axisYBoundMax = 0;
     graphs.forEach(x => axisYBoundMax = Math.max(axisYBoundMax, x.chart.axisY[0].bounds.x2));
     graphs.forEach(x => x.chart.axisY[0].set("margin", axisYBoundMax - (x.chart.axisY[0].bounds.x2 - x.chart.axisY[0].bounds.x1)));
-
+    setChartMode(graphMode);
 
 
     setTimeout(() => {
         syncCharts(graphs.map(c => { return c.chart }), true, true, true);
         graphs.forEach(x => x.chart.render());
+        setChartMode(graphMode);
     }, 500);
 
+}
+
+async function overlayFlowRespiratoryEvents(data){
+    let flowChart = graphs.find(x => x.channelCodes.indexOf("FlowRate") >= 0);
+    if (flowChart == null) return;
+
+    flowChart.chart.options.axisX.stripLines = [];
+
+    let respEvents = [];
+
+    for (let session of data.Sessions)
+    {
+        if (!session.Enabled) continue;
+        for (let sessionChannel of session.Channels)
+        {
+            if (sessionChannel.Type != 4 && sessionChannel.Type != 8 && sessionChannel.Type != 16) continue;
+
+            for (let i = 0; i < sessionChannel.Data.length; i++)
+            {
+                let evtDuration = sessionChannel.Data[i];
+                let evtStart = sessionChannel.Time[i] - (sessionChannel.Data[i] * 1000);
+                let evtEnd = sessionChannel.Time[i];
+
+                let respEvent = respEvents.find(x => x.Code == sessionChannel.Code);
+                if (respEvent == null){
+                    respEvent = {
+                        Code: sessionChannel.Code,
+                        Type: sessionChannel.Type,
+                        Name: sessionChannel.Name,
+                        Label: sessionChannel.Label,
+                        Events: []
+                    }
+                    respEvents.push(respEvent);
+                }
+
+                respEvent.Events.push({
+                    Start: evtStart,
+                    End: evtEnd,
+                    Duration: evtDuration
+                });
+            }
+        }
+    }
+
+    respEvents = respEvents.sort((a,b) => a.Type > b .Type ? 0 : (a.Type < b.Type ? -1 : 0));
+
+    unknownColorIndex = 0;
+    for (let respEventType of respEvents){
+
+        let flgVis = flagVisibility.find(x => x.Code == respEventType.Code);
+        if (flgVis && !flgVis.Visible) continue;
+
+        let clr = "black";
+        if (Object.keys(FLAG_COLORS).indexOf(respEventType.Label) < 0)
+        {
+            clr = UNKNOWN_FLAG_COLORS[unknownColorIndex++ % UNKNOWN_FLAG_COLORS.length];
+            FLAG_COLORS[respEventType.Label] = clr;
+        } else clr = FLAG_COLORS[respEventType.Label];
+
+        for (let respEvent of respEventType.Events){
+            if (flowChart.chart.options.axisX.stripLines == null) flowChart.chart.options.axisX.stripLines = [];
+            flowChart.chart.options.axisX.stripLines.push({
+                startValue: respEvent.Start,
+                endValue: respEvent.End,
+                color: clr[1],
+                label: respEventType.Label,
+                labelFontColor: "#ffffff",
+                value: respEvent.Duration,
+                labelFontFamily: "Poppins",
+                labelFontSize: 12,
+                labelBackgroundColor: "#00000080",
+                labelPlacement: "outside",
+                showOnTop: true,
+                opacity: 0.25,
+                EventName: respEventType.Name,
+                EventDuration: respEvent.Duration
+            })
+        }
+    }
+
+    flowChart.chart.render();
+
+    //Hook mouseover events
+    let canvas = $(flowChart.chart.canvas).next("canvas");
+    if (canvas.length == 0) canvas = $(flowChart.chart.canvas);
+
+    let mouseMoveEvent = (evt) => {
+        if (evt.offsetX == null || evt.offsetY == null) return;
+
+        //Are we in a stripLine
+        let overSparkline = flowChart.chart.axisX[0].stripLines.find(s =>
+            s.bounds != null &&
+            evt.offsetX >= s.bounds.x1 && evt.offsetX <= s.bounds.x2 &&
+            evt.offsetY >= s.bounds.y1 && evt.offsetY <= s.bounds.y2
+        )
+        if (overSparkline){
+
+            $("#tooltipFlowEvent").text(`${overSparkline.options.EventName} ${overSparkline.options.EventDuration}s`);
+            let tooltipWidth = $("#tooltipFlowEvent").width();
+
+            //console.log(overSparkline.options.value, overSparkline.options.label);
+            let chartRect  = evt.target.getBoundingClientRect();
+            let chartBottm = chartRect.bottom - 10;
+
+            $("#tooltipFlowEvent")
+                .css("display", "block")
+                .css("top", chartBottm)
+                .css("left", evt.clientX - (tooltipWidth/2))
+
+        }else{
+            $("#tooltipFlowEvent")
+                .css("display", "none")
+        }        
+    }
+
+    $(canvas).on("mousemove touchstart", mouseMoveEvent)
+
+
+}
+
+function hideFlowChartOverlayTooltip(){
+    $("#tooltipFlowEvent").css("display", "none")
 }
 
 async function displayTimeline(data){
     if (timeline != null)
     {
-        timeline.stage.enableMouseOver(-1);
-        timeline.stage.enableDOMEvents(false);
-        timeline.stage.removeAllEventListeners();
-        timeline.stage.removeAllChildren();
-        timeline.stage.canvas = null;
+        try{
+            timeline.stage.enableMouseOver(-1);
+            timeline.stage.enableDOMEvents(false);
+            timeline.stage.removeAllEventListeners();
+            timeline.stage.removeAllChildren();            
+            timeline.stage.canvas = null;
+        }catch{};
         timeline.stage = null;
         $("#pnlTimeline").empty();
     }
+
+    if (!data.Sessions.find(s => s.Enabled)) return;
 
     let flagChannels = [];
     for (let session of data.Sessions){
@@ -453,10 +695,14 @@ async function displayTimeline(data){
 
     let canvasHeight = (flagChannels.length * 25) + xAxisHeight;
 
-    let canvas = $(`<canvas width="${sampleCanvas.width}" height="${canvasHeight}px" id="chtTimeline"/>`)
+    let containerInnerWidth = $("#flexGraphs").width();
+
+    //let canvas = $(`<canvas width="${sampleCanvas.width}" height="${canvasHeight}px" id="chtTimeline"/>`)
+    let canvas = $(`<canvas width="${containerInnerWidth}" height="${canvasHeight}px" id="chtTimeline"/>`)
     $("#pnlTimeline").append(canvas);
     timeline.stage = new createjs.Stage("chtTimeline");
     let stage = timeline.stage;
+    createjs.Touch.enable(stage);
 
     //Axis Lines
     let yAxis = new createjs.Shape();
@@ -478,9 +724,15 @@ async function displayTimeline(data){
     for (let flagChannel of flagChannels){
         let label = new createjs.Text(flagChannel.Label, "12px Poppins", "#000000");
         label.x = offsetLeft - label.getMeasuredWidth() - 5;
-        label.y = (idx * 25) + ((25 - label.getMeasuredHeight())/2);
+        label.y = (idx * 25) + ((25 - label.getMeasuredHeight())/2);                
+        
+        timeline.labels.push({text: label, flagCode: flagChannel.Code});
         stage.addChild(label);
-        timeline.labels.push(label);
+
+        label.on("click", () => {
+            //toggleFlagVisibility(flagChannel.Code);                
+            console.log("toggled");
+        });
 
         let stripe = new createjs.Shape();
         stripe.graphics.beginFill(idx % 2 == 0 ? "#ffffff" : "#edf6f7");
@@ -492,35 +744,104 @@ async function displayTimeline(data){
 
     idx = 0;
 
-    
-
-    //Individual events
+    //Helper functions and bounds
     let startTimestamp = data.Sessions.find(s => s.Enabled).SessionStart;
     let endTimestamp = data.Sessions.findLast(s => s.Enabled).SessionEnd;
     let totalDuration = endTimestamp - startTimestamp;
     let plotWidth = samplePlotArea.x2 - samplePlotArea.x1;
 
     let plotArea = {x1: offsetLeft, y1: 0, x2: samplePlotArea.x2, y2: 25 * flagChannels.length, width: plotWidth, height: 25 * flagChannels.length};
+    timeline.plotArea = plotArea;
 
     let calcTimestampX = (tm) =>{  return (((tm - startTimestamp) / totalDuration) * plotWidth) + offsetLeft  };
     let calcTimeWidth = (dur) => { return Math.max(2, (dur / totalDuration) * plotWidth); };
     let calcTimestampFromX = (x) => { return (((x - plotArea.x1) / plotArea.width) * totalDuration)+startTimestamp;}
 
+    timeline.calcTimestampX = calcTimestampX;
+    timeline.calcTimeWidth = calcTimeWidth;
+    timeline.calcTimestampFromX = calcTimestampFromX;
+    timeline.minTimestamp = startTimestamp;
+    timeline.maxTimestamp = endTimestamp;
+
+
+    //Zoom masks
+    let zoomMaskLeft = new createjs.Shape();
+    let zoomMaskRight = new createjs.Shape();
+    stage.addChild(zoomMaskLeft);
+    stage.addChild(zoomMaskRight);
+    zoomMaskLeft.visible = false;
+    zoomMaskRight.visible = false;
+
+    let zoomMaskLeftCommand = zoomMaskLeft.graphics.beginFill("#00000012").drawRect(plotArea.x1, 0, 0, plotArea.y2).command;
+    let zoomMaskRightCommand = zoomMaskLeft.graphics.beginFill("#00000012").drawRect(plotArea.x1, 0, 0, plotArea.y2).command;
+
+    timeline.zoomMasks = {
+        left: {
+            shape: zoomMaskLeft,
+            command: zoomMaskLeftCommand
+        },
+        right: {
+            shape: zoomMaskRight,
+            command: zoomMaskRightCommand
+        }
+    }
+
+    timeline.updateZoomMask = (dtStart, dtEnd) => {
+        if (dtStart != null)
+        {
+            zoomMaskLeftCommand.w = calcTimestampX(dtStart) - plotArea.x1;
+            zoomMaskLeft.visible = true;
+        } else {
+            zoomMaskLeft.visible = false;
+        }
+
+        if (dtEnd != null)
+        {
+            zoomMaskRightCommand.x = calcTimestampX(dtEnd);
+            zoomMaskRightCommand.w = plotArea.x2 - zoomMaskRightCommand.x;
+            zoomMaskRight.visible = true;
+        } else {
+            zoomMaskRight.visible = false;
+        }
+
+        stage.update();
+    }
+
+    //Zoom window
+    let zoomWindowShape = new createjs.Shape();
+    stage.addChild(zoomWindowShape);
+    zoomWindowShape.visible = false;
+    let zoomWindowShapeCommand = zoomWindowShape.graphics.beginFill("#4287f540").drawRect(0, 0, 0, plotArea.y2).command;
+    timeline.zoomWindow = {
+        shape: zoomWindowShape,
+        command: zoomWindowShapeCommand,
+        busy: false
+    };
+
+
+    //Individual events
+    unknownColorIndex = 0;
     for (let flagChannel of flagChannels){
         flagChannel.shapes = [];
+
+        let clr = "black";
+        if (Object.keys(FLAG_COLORS).indexOf(flagChannel.Label) < 0)
+        {
+            clr = UNKNOWN_FLAG_COLORS[unknownColorIndex++ % UNKNOWN_FLAG_COLORS.length];
+            FLAG_COLORS[flagChannel.Label] = clr;
+        } else clr = FLAG_COLORS[flagChannel.Label];
+
         for (let evtIndex = 0; evtIndex < flagChannel.Data.length; evtIndex++){
             let flagShape = new createjs.Shape();
 
-            let clr = Object.keys(FLAG_COLORS).indexOf(flagChannel.Label) < 0 ? UnknownFlagColors[unknownColorIndex++ % UnknownFlagColors.length] : FLAG_COLORS[flagChannel.Label];
-
-            flagShape.graphics.setStrokeStyle(1).beginStroke(clr[0]).beginFill(clr[1]);
+            flagShape.graphics.setStrokeStyle(1).beginStroke(clr[1]).beginFill(clr[1]);
             let x = calcTimestampX(flagChannel.Time[evtIndex] - flagChannel.Data[evtIndex]);
             let width = calcTimeWidth(flagChannel.Data[evtIndex]);
-            flagShape.graphics.drawRect(x, idx*25, width, 25);
+            flagShape.graphics.drawRect(x, idx*25+0.25, width-0.5, 25-0.25);
 
             flagShapeHitArea = new createjs.Shape();
             flagShapeHitArea.graphics.beginFill("#ff000040").drawRect(x-5, (idx*25)-5, width+10, 25+10);
-            flagShapeHitArea.setBounds(x-5, (idx*25)-5, width+10, 25+10);            
+            flagShapeHitArea.setBounds(x-5, (idx*25)-5, width+10, 25+10);
             flagShape.hitArea = flagShapeHitArea;
 
             stage.addChild(flagShape);
@@ -569,21 +890,34 @@ async function displayTimeline(data){
     timeline.crosshair.container.visible = false;
 
     timeline.crosshair.backgroundCommand = crosshairTooltipBackground.graphics.beginFill("#000000").drawRect(0,0,10,15).command;
-    
+
     stage.addChild(crosshairTooltipContainer);
 
     let updateCrosshairText = (dt) => {
         crosshairTooltipText.text = moment(dt).format(`${dateFormat} ${timeFormat}`);
         timeline.crosshair.backgroundCommand.w = crosshairTooltipText.getMeasuredWidth() + 8;
-        timeline.crosshair.backgroundCommand.h = crosshairTooltipText.getMeasuredHeight() + 5;        
+        timeline.crosshair.backgroundCommand.h = crosshairTooltipText.getMeasuredHeight() + 5;
     };
 
     let updateCrosshairTooltipPosition = (x) => {
         let proposedX = x - (timeline.crosshair.backgroundCommand.w / 2);
         if (proposedX < 0) proposedX = 0;
         if (proposedX + timeline.crosshair.backgroundCommand.w > plotArea.x2) proposedX = plotArea.x2 - timeline.crosshair.backgroundCommand.w;
-        timeline.crosshair.container.x = proposedX;        
+        timeline.crosshair.container.x = proposedX;
     }
+
+    timeline.updateCrosshairText = updateCrosshairText;
+    timeline.updateCrosshairTooltipPosition = updateCrosshairTooltipPosition;
+
+    timeline.updateCrosshair = (dt) => {
+        let canvasX = timeline.calcTimestampX(dt);
+        crosshairLine.visible = true;
+        crosshairLine.x = canvasX;
+        timeline.crosshair.container.visible = true;
+        updateCrosshairText(dt);
+        updateCrosshairTooltipPosition(canvasX);
+    }
+
 
     //Event Bubble
     let eventBubble = new createjs.Container();
@@ -594,7 +928,7 @@ async function displayTimeline(data){
     eventBubbleShape.shadow = new createjs.Shadow("#00000060", 5, 5, 10);
     eventBubbleText.x = 8;
     eventBubbleText.y = 8;
-    
+
 
     eventBubble.addChild(eventBubbleShape);
     eventBubble.addChild(eventBubbleText);
@@ -603,7 +937,7 @@ async function displayTimeline(data){
         container: eventBubble,
         text: eventBubbleText,
         shape: eventBubbleShape,
-        shapeCommand: eventBubbleRect        
+        shapeCommand: eventBubbleRect
     }
 
     eventBubble.visible = false;
@@ -624,7 +958,7 @@ async function displayTimeline(data){
         if (proposedY + eventBubbleRect.h > plotArea.height) proposedY = y - 40;
         eventBubble.y = proposedY;
 
-        eventBubble.visible = true;        
+        eventBubble.visible = true;
     }
 
     let hideEventBubble = () => { eventBubble.visible = false; }
@@ -636,9 +970,12 @@ async function displayTimeline(data){
             crosshairLine.visible = true;
             crosshairLine.x = evt.stageX;
             timeline.crosshair.container.visible = true;
-            updateCrosshairText(calcTimestampFromX(evt.stageX));
+            let timestampAtX = calcTimestampFromX(evt.stageX);
+            updateCrosshairText(timestampAtX);
             updateCrosshairTooltipPosition(evt.stageX);
             stage.update();
+
+            graphs.forEach(g => g.chart.axisX[0].crosshair.showAt(new Date(timestampAtX)));
         } else {
             crosshairLine.visible = false;
             timeline.crosshair.container.visible = false;
@@ -646,34 +983,107 @@ async function displayTimeline(data){
         }
     });
 
-    stage.enableMouseOver();
-    stage.on("mouseout", () => {
-        crosshairLine.visible = false;
-        timeline.crosshair.container.visible = false;
+    stage.on("pressmove", (evt) => {
+        if (!timeline.zoomWindow.busy)
+        {
+            if (evt.stageX < plotArea.x1) return;
+            timeline.zoomWindow.command.w = 0;
+            timeline.zoomWindow.command.x = evt.stageX;
+            timeline.zoomWindow.busy = true;
+            timeline.zoomWindow.shape.visible = true;
+            stage.update();
+        }
+        else{
+            if (evt.stageX < plotArea.x1 || evt.stageX < timeline.zoomWindow.command.x) return;
+            timeline.zoomWindow.command.w = evt.stageX - timeline.zoomWindow.command.x;
+            stage.update();
+        }
+    });
+
+    stage.on("click", (evt) => {
+        console.log(`Stage clicked at ${evt.stageX}, ${evt.stageY}`);
+        let labelClicked = false;
+        for (let label of timeline.labels){
+            let b = label.text.getTransformedBounds();
+            if (evt.stageX >= b.x - 10 && evt.stageX <= b.x + b.width + 20 && evt.stageY >= b.y - 5 && evt.stageY <= b.y + b.height + 10){
+                console.log(`Toggle flag ${label.flagCode}`);                
+                toggleFlagVisibility(label.flagCode);                
+            }
+        }
+
+    })
+
+    stage.on("pressup", (evt) => {        
+        //Zoom
+        timeline.zoomWindow.busy = false;
+        timeline.zoomWindow.shape.visible = false;
         stage.update();
+
+        if (timeline.zoomWindow.command.w < 1) return;
+
+        let rangeStart = calcTimestampFromX(timeline.zoomWindow.command.x);
+        let rangeEnd = calcTimestampFromX(timeline.zoomWindow.command.x + timeline.zoomWindow.command.w);
+        console.log(`Flag chart triggered zoom range from ${new Date(rangeStart)} to ${new Date(rangeEnd)}`);
+        setZoomRange(rangeStart, rangeEnd);
+    });
+
+    stage.enableMouseOver();
+    stage.on("mouseout", (evt) => {
+        //crosshairLine.visible = false;
+        //timeline.crosshair.container.visible = false;
+        //stage.update();
     });
 
     stage.update();
 
 }
 
+async function toggleFlagVisibility(flagChannelCode)
+{
+    try{
+        $("body").css("cursor", "wait");
+        let flagVis = flagVisibility.find(f => f.Code == flagChannelCode);
+        if (!flagVis) {
+            flagVis = {Code: flagChannelCode, Visible: true};
+            flagVisibility.push(flagVis);
+        } 
+        flagVis.Visible = !flagVis.Visible;
+
+        let flagLabel = timeline.labels.find(l => l.flagCode == flagChannelCode);
+        if (flagLabel) flagLabel.text.alpha = flagVis.Visible ? 1 : 0.4;
+        timeline.stage.update();
+        await delay(10);
+        overlayFlowRespiratoryEvents(jsonData);
+    }
+    finally{
+        $("body").css("cursor", "auto");
+    }
+}
+
 async function loadData(url) {
     $("#pnlLoadingText").text("Downloading Shared Data...");
-    jsonData = await getDataJson(url);
-    let sessions = jsonData.Sessions;
-    if (sessions == null || sessions.length == 0) return;
 
-    sessions.forEach(x => x.Enabled = true);
-    
-    displayMachineSettings(jsonData);
-    displaySessions(jsonData);
+    try{
+        jsonData = await getDataJson(url);
+        let sessions = jsonData.Sessions;
+        if (sessions == null || sessions.length == 0) return;
 
-    await onChangeSessions();
+        sessions.forEach(x => x.Enabled = true);
+
+        displayMachineSettings(jsonData);
+        displaySessions(jsonData);
+
+        await onChangeSessions();
+    }
+    catch(err){
+        $("#pnlLoadingText").text("The data could not be loaded");
+        throw err;
+    }
 
     return;
 
-    
-    
+
+
     await makeWaveformCharts(jsonData);
     await displayTimeline(jsonData);
     displayStatistics(jsonData);
@@ -682,12 +1092,96 @@ async function loadData(url) {
 
 function delay(ms){ return new Promise(res => {setTimeout(res, ms); })}
 
+function setZoomRange(dtStart, dtEnd){
+    graphs.forEach(g => {
+        g.chart.options.axisX.viewportMinimum = dtStart;
+        g.chart.options.axisX.viewportMaximum = dtEnd;
+        g.chart.render();    
+    });
+    onUpdateZoomRange();
+}
+
+function getZoomRange()
+{
+    let chartStart = graphs.find(g => g.chart.options.axisX.viewportMinimum != null);
+    let chartEnd = graphs.find(g => g.chart.options.axisX.viewportMinimum != null);
+
+    let dtStart = chartStart != null ? chartStart.chart.options.axisX.viewportMinimum : null;
+    let dtEnd = chartEnd != null ? chartEnd.chart.options.axisX.viewportMaximum : null;
+
+    return {start: dtStart ?? timeline.minTimestamp, end: dtEnd ?? timeline.endTimestamp};
+
+}
+
+function zoomOut(){
+    let currentZoom = getZoomRange();
+    currentZoom.start = currentZoom.start ?? timeline.minTimestamp;
+    currentZoom.end = currentZoom.end ?? timeline.maxTimestamp;
+    let range = currentZoom.end - currentZoom.start;
+    let newStart = currentZoom.start - (range / 2);
+    let newEnd = currentZoom.end + (range / 2);
+    if (newStart < timeline.minTimestamp) newStart = timeline.minTimestamp;
+    if (newEnd > timeline.maxTimestamp) newEnd = timeline.maxTimestamp;
+    setZoomRange(newStart, newEnd);
+}
+
+function zoomIn(){
+    let currentZoom = getZoomRange();
+    currentZoom.start = currentZoom.start ?? timeline.minTimestamp;
+    currentZoom.end = currentZoom.end ?? timeline.maxTimestamp;
+    let range = currentZoom.end - currentZoom.start;
+    let newStart = currentZoom.start + (range / 4);
+    let newEnd = currentZoom.end - (range / 4);
+    if (newStart < timeline.minTimestamp) newStart = timeline.minTimestamp;
+    if (newEnd > timeline.maxTimestamp) newEnd = timeline.maxTimestamp;
+    setZoomRange(newStart, newEnd);
+}
+
+function panLeft(){
+    let currentZoom = getZoomRange();
+    currentZoom.start = currentZoom.start ?? timeline.minTimestamp;
+    currentZoom.end = currentZoom.end ?? timeline.maxTimestamp;
+    let range = currentZoom.end - currentZoom.start;
+    let shiftBy = range * 0.8;
+    let newStart = currentZoom.start - shiftBy;
+    let newEnd = currentZoom.end - shiftBy;
+    if (newStart < timeline.minTimestamp) {newStart = timeline.minTimestamp; newEnd = newStart + range};
+    if (newEnd > timeline.maxTimestamp) newEnd = timeline.maxTimestamp;
+    setZoomRange(newStart, newEnd);
+}
+
+function panRight(){
+    let currentZoom = getZoomRange();
+    currentZoom.start = currentZoom.start ?? timeline.minTimestamp;
+    currentZoom.end = currentZoom.end ?? timeline.maxTimestamp;
+    let range = currentZoom.end - currentZoom.start;
+    let shiftBy = range * 0.8;
+    let newStart = currentZoom.start + shiftBy;
+    let newEnd = currentZoom.end + shiftBy;
+    if (newStart < timeline.minTimestamp) newStart = timeline.minTimestamp;
+    if (newEnd > timeline.maxTimestamp) {newEnd = timeline.maxTimestamp; newStart = newEnd - range };
+    setZoomRange(newStart, newEnd);
+}
+
+function onUpdateZoomRange(){
+    let chartStart = graphs.find(g => g.chart.options.axisX.viewportMinimum != null);
+    let chartEnd = graphs.find(g => g.chart.options.axisX.viewportMinimum != null);
+
+    let dtStart = chartStart != null ? chartStart.chart.options.axisX.viewportMinimum : null;
+    let dtEnd = chartEnd != null ? chartEnd.chart.options.axisX.viewportMaximum : null;
+
+    hideFlowChartOverlayTooltip();
+
+    timeline.updateZoomMask(dtStart, dtEnd);
+}
+
 async function createChartForChannel(sessions, channelCodes, options) {
 
     //Create the data for the channel by combining all the channels.
     let defaultOptions = {
         additionalChartOptions: null,
-        additionalSeriesOptions: null
+        additionalSeriesOptions: null,
+        visible: true
     }
 
     options = {...defaultOptions, ...options};
@@ -727,6 +1221,8 @@ async function createChartForChannel(sessions, channelCodes, options) {
             //data.push(...sessionChannelData);
         }
 
+        if (data.length == 0) continue;
+
 
         let defaultSeriesOptions = {
             name: channel == null ? "" : channel.Name,
@@ -743,14 +1239,15 @@ async function createChartForChannel(sessions, channelCodes, options) {
         series.push({...defaultSeriesOptions, ...options.additionalSeriesOptions});
     }
 
+    if (series.length == 0) return;
 
-    let chartContainer = $(`<div class="graph-container"></div>`)
+    let chartContainer = $(`<div class="graph-container"></div>`).toggleClass("hidden", !options.visible);
     //$(chartContainer).attr("data-channel-code", channelCode);
     $("#pnlGraphs").append(chartContainer);
 
 
     let chartDefaultOptions = {
-        animationEnabled: true,
+        animationEnabled: false,
         zoomEnabled: true,
         /*backgroundColor: null,*/
         title: {},
@@ -796,9 +1293,18 @@ async function createChartForChannel(sessions, channelCodes, options) {
 
     graphs.push({
         chart: chart,
-        container: chartContainer
+        container: chartContainer,
+        channelCodes: channelCodes
     });
 
+}
+
+function setChartMode(mode){
+    graphMode = mode;
+    graphs.forEach(g => {
+        g.chart.panEnabled = mode == "Pan" ? 1 : 0;
+        g.chart.zoomEnabled = mode == "Pan" ? 0 : 1;
+    });
 }
 
 function syncCharts(charts, syncToolTip, syncCrosshair, syncAxisXRange) {
@@ -806,11 +1312,19 @@ function syncCharts(charts, syncToolTip, syncCrosshair, syncAxisXRange) {
     if (!this.onToolTipUpdated) {
         this.onToolTipUpdated = function (e) {
             try{
-                for (var j = 0; j < charts.length; j++) {
-                    if (charts[j] != e.chart)
-                        if (e.entries[0].xValue != null)
-                            charts[j].toolTip.showAtX(e.entries[0].xValue);
-                }
+                setTimeout(() => {
+                    for (var j = 0; j < charts.length; j++) {
+                        if (charts[j] != e.chart)
+                            if (e.entries[0].xValue != null)
+                                //charts[j].toolTip.showAtX(e.entries[0].xValue); //CanvasJS just doesn't show a tooltip if there isn't a data point at exactly this timestamp
+                                charts[j].toolTip.showAtX(charts[j].axisX[0].crosshair.value); //Instead, use the crosshairs x position since it snaps to the last data point
+                    }
+                }, 50);
+                
+
+                let timestamp = e.entries[0].xValue.getTime();
+                timeline.updateCrosshair(timestamp);
+                timeline.stage.update();
             }catch
             {
 
@@ -852,12 +1366,13 @@ function syncCharts(charts, syncToolTip, syncCrosshair, syncAxisXRange) {
                     charts[j].options.axisX.viewportMinimum = charts[j].options.axisX.viewportMaximum = null;
                     charts[j].options.axisY.viewportMinimum = charts[j].options.axisY.viewportMaximum = null;
                     charts[j].render();
-                } else if (charts[j] !== e.chart) {
+                } else {//if (charts[j] !== e.chart) {
                     charts[j].options.axisX.viewportMinimum = e.axisX[0].viewportMinimum;
                     charts[j].options.axisX.viewportMaximum = e.axisX[0].viewportMaximum;
                     charts[j].render();
                 }
             }
+            onUpdateZoomRange();
         }
     }
 
@@ -1010,3 +1525,20 @@ function sortArr(arr) {
     return ary;
 }
 
+window.addEventListener("resize", function() {
+    clearTimeout(tmrWindowResize);
+    tmrWindowResize = setTimeout(onWindowResize, 500);
+});
+
+$("body").on("keydown", function(evt) {
+    switch (evt.code){
+        case "ArrowLeft": panLeft(); break;
+        case "ArrowRight": panRight(); break;
+        case "Minus":
+        case "NumpadSubtract": zoomOut(); break;
+        case "NumpadAdd": zoomIn(); break
+    }
+    //console.log(evt.code);
+});
+
+document.addEventListener("scroll", () => {hideFlowChartOverlayTooltip()});

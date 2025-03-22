@@ -4,7 +4,7 @@
         <title>OSCAR Sleep Share</title>
         <link rel="icon" type="image/png" href="static/images/oscar-logo.png" />
         <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta id="meta-viewport" name="viewport" content="width=device-width, initial-scale=1, user-scalable=0">
         <meta http-equiv="X-UA-Compatible" content="ie=edge">
         <meta http-equiv="cache-control" content="no-cache, no-store, must-revalidate">
 
@@ -58,27 +58,40 @@
                 </div>
 
                 
-                <div class="flexbox" id="pnlSessions" style="background-color: #6fa54e; color:white">
-                    <div style="display: flex; column-gap: 10px; margin-bottom:8px;">
-                        <b><i class="fa fa-list-check fa-solid" style="font-size: 1.5em"></i></b>
-                        <b style="flex-grow: 1">Sessions</b>
-                    </div>
-                    <table class="tbl table-striped-light" style="font-size: 0.85rem">
-                        <thead>
-                            <tr>
-                                <th></th>
-                                <th>Start</th>
-                                <th>End</th>
-                                <th>Duration</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tblSessions">
+                <div style="display: flex; flex-direction: column; row-gap: 25px; flex-grow: 1">
+                    <div class="flexbox" id="pnlSessions" style="background-color: #6fa54e; color:white">
+                        <div style="display: flex; column-gap: 10px; margin-bottom:8px;">
+                            <b><i class="fa fa-list-check fa-solid" style="font-size: 1.5em"></i></b>
+                            <b style="flex-grow: 1">Sessions</b>
+                        </div>
+                        <table class="tbl table-striped-light" style="font-size: 0.85rem">
+                            <thead>
+                                <tr>
+                                    <th></th>
+                                    <th>Start</th>
+                                    <th>End</th>
+                                    <th>Duration</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tblSessions">
 
-                        </tbody>
-                    </table>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="flexbox" id="pnlChannels" style="background-color: #4e75a5; color:white;">
+                        <div style="display: flex; column-gap: 10px; margin-bottom:8px;">
+                            <b><i class="fa fa-wave-square fa-solid" style="font-size: 1.5em"></i></b>
+                            <b style="flex-grow: 1">Channels</b>
+                        </div>
+                        <div id="pnlChannelSelect">
+
+                        </div>
+                        
+                    </div>
                 </div>
 
-                <div class="flexbox" style="background-color: #5b4d85; color:white" id="pnlStats">
+                <div class="flexbox" style="background-color: #5b4d85; color:white;" id="pnlStats">
                     <div style="display: flex; column-gap: 10px; margin-bottom:8px;" >
                         <b><i class="fa fa-chart-simple fa-solid" style="font-size: 1.5em"></i></b>
                         <b style="flex-grow: 1">Statistics</b>
@@ -90,9 +103,9 @@
                                 <th>Min</th>
                                 <th>Med</th>
                                 <th>95%</th>
-                                <th>99.5%</th>
+                                <th class="hide-xs">99.5%</th>
                                 <th>Max</th>
-                                <th>Units</th>
+                                <th class="hide-xs">Units</th>
                             </tr>
                         </thead>
                         <tbody id="tblStats">
@@ -100,11 +113,13 @@
                         </tbody>
                     </table>
 
-                    <div style="display:flex; position: relative; align-items: flex-start;">
-                        <div id="pnlAHI"><div id="lblAHI"><b>AHI</b><div id="lblAHIValue" style="font-size: 1.15rem">1.25</div></div></div>
-                        <div id="chtAHI"></div>   
+                    <div style="display:flex; position: relative; align-items: flex-start; flex-wrap: wrap; justify-content: space-around;">
+                        <div style="position: relative">
+                            <div id="pnlAHI"><div id="lblAHI"><b>AHI</b><div id="lblAHIValue" style="font-size: 1.15rem">1.25</div></div></div>
+                            <div id="chtAHI"></div>   
+                        </div>
 
-                        <table class="tbl table-striped-light" style="font-size: 0.85rem; margin-top: 25px;">
+                        <table class="tbl table-striped-light" style="font-size: 0.85rem; margin-top: 25px; flex-grow: 1; width: auto; min-width: 300px;">
                             <thead>
                                 <tr>
                                     <th></th>
@@ -121,17 +136,45 @@
 
             </div>
 
-            <div class="flex-row">
-                <div class="flexbox">
+            <div class="flex-row" style="">
+                <div class="flexbox" id="flexGraphs">
                     <div id="pnlTimeline">                                                
                     </div>
                     <div id="pnlGraphs"></div>
                 </div>
             </div>
 
+            <div class="chart-toolbar">
+                <div class="btn-group-vertical " role="group">                    
+                    <input type="radio" class="btn-check" autocomplete="off" id="btnToolbarZoomMode" checked name="btnToolbarMode" value="Pan">
+                    <label class="btn btn-outline-secondary" for="btnToolbarZoomMode" data-bs-toggle="tooltip" data-bs-title="Pan Mode (p)" onclick="setChartMode(`Pan`)"><i class="fa fa-arrow-right-arrow-left"></i></label>                    
+                    <input type="radio" class="btn-check" autocomplete="off" id="btnToolbarPanMode"  name="btnToolbarMode" value="Zoom">
+                    <label class="btn btn-outline-secondary" for="btnToolbarPanMode" data-bs-toggle="tooltip" data-bs-title="Zoom Mode (z)" onclick="setChartMode(`Zoom`)"><i class="fa fa-magnifying-glass"></i></label>
+                </div>
+
+                <div class="btn-group-vertical" role="group">
+                    <button type="button" class="btn btn-secondary" data-bs-toggle="tooltip" data-bs-title="Zoom In (+)" onclick="zoomIn();"><i class="fa fa-magnifying-glass-plus"></i></button>
+                    <button type="button" class="btn btn-secondary" data-bs-toggle="tooltip" data-bs-title="Pan Left (←)" onclick="panLeft();"><i class="fa fa-arrow-left"></i></button>
+                    <button type="button" class="btn btn-secondary" data-bs-toggle="tooltip" data-bs-title="Pan Right (→)" onclick="panRight();"><i class="fa fa-arrow-right"></i></button>
+                    <button type="button" class="btn btn-secondary" data-bs-toggle="tooltip" data-bs-title="Zoom Out (-)" onclick="zoomOut();"><i class="fa fa-magnifying-glass-minus"></i></button>                                    
+                </div>
+            </div>
+
+            <div id="tooltipFlowEvent">
+                Obstructive Apnea 12s
+            </div>
+
+            
+
             <div id="pnlLoading">
                 <div style="color:white; font-size: 3.5rem" id="pnlLoadingText"></div>
             </div>
+
+         
+
+            <template id="tmpChartToolbar">
+                
+            </template>
 
             <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
             <script src="https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.min.js"></script>
@@ -146,7 +189,12 @@
                     var locale = window.navigator.userLanguage || window.navigator.language;
                     moment.locale(locale);
                     restoreSettings();
-                    await loadData("https://riaancillie.blob.core.windows.net/test/data.json.gz");
+                    //await loadData("https://riaancillie.blob.core.windows.net/test/data.json.gz");
+                    //await loadData("data.json.gz");
+                    await loadData("2025-01-24.json.gz");
+
+                    const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+                    const tooltipList = [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl));
                 });
             </script>
 
